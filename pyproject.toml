@@ -1,0 +1,70 @@
+[project]
+name = "mlx-h3"
+version = "0.0.1a1"
+description = "Pure MLX MiniMax-H3 text-to-video-and-audio inference for Apple Silicon."
+readme = "README.md"
+requires-python = ">=3.13"
+keywords = [
+    "apple-silicon",
+    "audio-generation",
+    "generative-ai",
+    "minimax-h3",
+    "mlx",
+    "text-to-video",
+    "video-generation",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: MacOS X",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "mlx>=0.32",
+]
+
+[project.scripts]
+mlx-h3 = "mlx_h3.cli:main"
+
+[project.urls]
+Repository = "https://github.com/appautomaton/mlx-h3"
+Issues = "https://github.com/appautomaton/mlx-h3/issues"
+# Deliberately NOT depended on:
+#   huggingface_hub -- ships telemetry; weights are local, downloads use the
+#                      standalone `hf` CLI installed as a uv tool
+#   safetensors     -- redundant, mx.load() reads safetensors natively (verified)
+#   torch           -- the runtime and validation path are pure MLX
+#   av              -- only needed to mux the final mp4; add at that point
+#   tokenizers      -- pulls huggingface_hub transitively (plus httpx / hf-xet),
+#                      and is only needed once the text encoder is wired up.
+#                      Reassess then, or implement BPE from tokenizer.json.
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<9",
+    "ruff>=0.11,<0.12",
+    "numpy",              # dev/quantize.py only: raw-byte reads during conversion
+]
+
+[build-system]
+requires = ["uv_build>=0.11.2,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+source-exclude = [".DS_Store"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "checkpoint: needs local weights under weights/ (skip if absent)",
+    "runtime: needs weights and runs inference (slow)",
+    "fixture: optional parity check against locally supplied test data",
+]
+
+[tool.ruff]
+target-version = "py313"
+exclude = [".venv", "weights"]
