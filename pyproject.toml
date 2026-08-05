@@ -1,6 +1,6 @@
 [project]
 name = "mlx-h3"
-version = "0.0.1a1"
+version = "0.0.1a2"
 description = "Pure MLX MiniMax-H3 text-to-video-and-audio inference for Apple Silicon."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -38,10 +38,8 @@ Issues = "https://github.com/appautomaton/mlx-h3/issues"
 #                      standalone `hf` CLI installed as a uv tool
 #   safetensors     -- redundant, mx.load() reads safetensors natively (verified)
 #   torch           -- the runtime and validation path are pure MLX
-#   av              -- only needed to mux the final mp4; add at that point
-#   tokenizers      -- pulls huggingface_hub transitively (plus httpx / hf-xet),
-#                      and is only needed once the text encoder is wired up.
-#                      Reassess then, or implement BPE from tokenizer.json.
+#   av              -- media I/O uses the external ffmpeg/ffprobe executables
+#   tokenizers      -- local byte-level BPE reads tokenizer.json without HF deps
 
 [dependency-groups]
 dev = [

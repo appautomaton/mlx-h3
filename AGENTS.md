@@ -12,7 +12,11 @@ Before changing code:
 
 1. Read this file.
 2. Read [README.md](README.md) for the public contract and current feature scope.
-3. Open only the task-relevant document from [docs/README.md](docs/README.md).
+3. Open only the task-relevant entry from the Documentation Router below.
+
+`docs/` is the source of truth and is written in the present tense: if it disagrees with the
+code, one of them is a bug. `.agents/` is the diary — dated handoffs and session history. Never
+record project status, plans, or "we decided X" in `docs/`; that belongs in `.agents/`.
 
 ## Non-Negotiable Constraints
 
@@ -73,12 +77,12 @@ them. Never use a PyTorch run as local validation.
 
 - [README.md](README.md): installation, CLI, supported features, local model layout,
   and user-facing memory behavior.
-- [docs/00-minimax-h3-overview.md](docs/00-minimax-h3-overview.md): model stages,
-  architecture, conditioning variants, and output constraints.
-- [docs/01-weights-and-starting-point.md](docs/01-weights-and-starting-point.md):
-  checkpoint selection, quantization, tensor naming, and residency decisions.
-- [docs/02-mlx-port-notes.md](docs/02-mlx-port-notes.md): validation strength,
-  numerical pitfalls, sampler semantics, and performance boundaries.
+- [docs/architecture.md](docs/architecture.md): what H3 is — stages, config, conditioning
+  variants, output constraints. Read when reasoning about model behavior.
+- [docs/weights.md](docs/weights.md): what is on disk, what inference loads, and the rules for
+  requantizing. Read when touching weights or `dev/quantize.py`.
+- [docs/porting.md](docs/porting.md): reference implementations, validation strength, the
+  silent-failure list, performance boundaries. Read when changing model code.
 - [src/mlx_h3/pipeline.py](src/mlx_h3/pipeline.py): phase orchestration and the
   end-to-end runtime contract.
 - [src/mlx_h3/memory.py](src/mlx_h3/memory.py): memory and swap safety policy.

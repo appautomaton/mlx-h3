@@ -1,7 +1,7 @@
 # MiniMax-H3 architecture
 
-Researched 2026-08-04. Facts come from repository primary sources (`config.json`,
-`LICENSE`, source files) wherever possible; vendor claims are labelled as such.
+What the model is. Sourced from `config.json`, `LICENSE`, and released source; vendor
+claims are labelled as such.
 
 ## Naming
 
@@ -80,7 +80,7 @@ MiniMaxH3Transformer3DModel
 
 4. **The text encoder is only used to half its depth.** The conditioner is Qwen3-VL-32B, but
    H3 reads the *unnormalized* hidden state after decoder layer 50, not the last one, and the
-   lm_head is unused. The model has 64 layers — see `01-weights-and-starting-point.md`.
+   lm_head is unused. The model has 64 layers — see `weights.md`.
 
 ### Components
 
@@ -104,7 +104,7 @@ MiniMaxH3Transformer3DModel
 | | Conditioning input | Weights |
 |---|---|---|
 | **FL2VA** | 0–2 keyframes (first / last / both) | `transformer/` |
-| **Ref2VA** | up to 9 images + 3 videos (2–15 s each) + 3 audio clips, 12 files max | `transformer_ref/` |
+| **Ref2VA** | up to 9 images + 3 videos (2–15 s each) + 3 audio clips, 12 references total | `transformer_ref/` |
 
 **Structurally identical; they differ only in input packing.** Everything else — text encoder,
 both VAEs, tokenizer, schedulers — is shared.

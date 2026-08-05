@@ -2,9 +2,7 @@
 
 ## There is no official DiT implementation
 
-After pulling all 158 non-weight files from `MiniMaxAI/MiniMax-H3`:
-
-**MiniMax shipped VAE source only. No DiT source.**
+**MiniMax ships VAE source only. No DiT source.**
 
 ```
 FL2VA/video_vae/*.py     24 .py files -- klvae / vae_vit / vae_cnn / attention / flash / parallel
@@ -75,78 +73,26 @@ Two more from the diffusers documentation:
 
 ## Performance: the DiT is already at the compute roofline
 
-Measured upstream by in-run ablation ladder (864x480 / 73 frames / 8-bit, stock qmm baseline
-41.3 s/step):
+Timings anywhere in this repo are preliminary and machine-specific; do not treat them as targets.
+What is durable is the shape of the cost, which follows from the architecture rather than from any
+measurement:
 
-| Component | s/step | Share |
-|---|---|---|
-| attention total (qkv + SDPA + out) | 22.4 | 54% |
-| — of which SDPA | 10.1 | 24% |
-| MLP (fc1 + SwiGLU + fc2) | 18.6 | 45% |
-| **AdaLN** | **~0** | **0%** |
+**Attention dominates and grows as O(S²).** Everything else in a block is linear in S. So sequence
+length — canvas × frames — is the only lever with real leverage on wall clock. `height`/`width`
+need only be multiples of 32; use small canvases while developing.
 
-Linear GEMMs measured ~13.6 TFLOPS effective, SDPA 13.3 TFLOPS.
+**Do not write a custom attention kernel.** MLX's full-attention kernel is already near roofline at
+these shapes. The whole line item a hand-written kernel could win is a couple of percent of a step.
 
-### Three settled conclusions
+**AdaLN is precomputed for residency, not speed.** Its cost does not scale with S at all — one
+`[t_dim -> 6*hidden*3]` matmul per block against 2–4 rows. The runtime materializes the request's
+exact schedule and releases roughly 13 GiB of AdaLN weights before denoising. See `weights.md`.
 
-**1. Quantization buys footprint, not speed.** The workload is compute-bound at roughly
-**192,000 FLOPs per weight byte**. bf16 41–48 s/step and jittery; 8-bit 42; 8-bit with wide-M
-dq-gemm 36.6, output byte-identical at u8.
-
-**2. Do not write a custom attention kernel.** One SDPA at `[1, 56, 9266, 128]` is ~2.5 TFLOP and
-microbenches at **186 ms = 13.3 TFLOPS**. A step has fifty of them: 50 x 186 ms = 9.3 s, matching
-the ladder's measured 10.1 s. MLX's full-attention kernel is near-roofline at this shape; a custom
-kernel's ceiling is ~2% of the step.
-
-**3. Never fuse AdaLN — precompute it.** Measured at 0% of step time. Roughly 13B of the 33B sits
-in AdaLN branches and is precomputable into a table at load. `adaln_t_table` is absent from the
-bf16 checkpoint, so the table must be built by us at load time.
-
-### What is left
+**Quantization buys footprint, not speed.** The workload is compute-bound, so 8-bit is chosen for
+residency, not throughput.
 
 Wall clock only moves via **fewer forwards** (fewer steps, TeaCache-style step cache) or **less
-math per forward** (sparse attention — still withheld upstream; MiniMax says it is coming in a
-future update).
+math per forward** (sparse attention — still withheld upstream; MiniMax says it is coming).
 
-## Baseline numbers (M4 Max / 128 GB)
-
-Our target is M5 Max / 128 GB, same class or faster:
-
-| Config | Weights | Wall clock |
-|---|---|---|
-| 256x256, 56 frames, 30 steps | bf16 | ~4 min |
-| 864x480, 73 frames, 30 steps | 8-bit | ~22 min |
-
-Cold-start breakdown: weight load ~36 s cold, TE ~15 s cold / ~1 s warm, VAE decode ~1–2 s,
-audio ~0.05 s. Everything else is the step loop.
-
-For scale: SGLang on 4xH200 does 1344x768 / 124 frames / 50 steps in 75.1 s.
-
-### Canvas is the biggest lever
-
-`960x544` runs about **2.3x faster per step** than the trained `1344x768`. `height`/`width` only
-need to be multiples of 32. Use small canvases throughout development.
-
-## Quantization mechanics
-
-**Filter by dtype, not by name.** The checkpoint marks its own precision-sensitive tensors as F32
-(13 of them). A name whitelist copied from the diffusers docs will not match the Comfy-Org repack's
-naming.
-
-**Lookup tables are the exception shape cannot decide.** A shape-based "is this a linear?" test
-packs `embed_tokens.weight` and `visual.pos_embed.weight`, which are read with `take_axis`; the
-gather then returns packed uint32 garbage. Keep gathered embedding tables dense explicitly.
-
-**Read lazily.** Convert tensor by tensor so the 62 GB DiT never lands in RAM whole; peak should be
-the size of the output being accumulated.
-
-## Sequencing
-
-1. **Layout** (0 GB) — packing, frame grid, position grids, sigma schedule, validated against
-   `minimax_h3_layout.json`. Weightless, and the only tier with a true executed reference.
-2. **VAEs** (5.5 GiB) — independently verifiable; get encode/decode working.
-3. **DiT block parity** — f32 CPU against `minimax_h3_dit.safetensors`, watching the six gotchas.
-4. **End-to-end live run** — small canvas first (256x256 / 56 frames / 30 steps).
-5. **Quantization** — bf16 → MLX affine group-64; cross-check output sizes against 35.2 / 28.2 GB.
-6. **Text encoder** — until then, feed a dumped fixed prompt embedding.
-7. **Ref2VA packing** — last, no DiT changes required.
+Quantization mechanics (dtype filtering, lookup tables, lazy reads) live in
+`weights.md`, not here.
