@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Referenced from the organization site's robots.txt, following the same
+     pattern as the mlx-atomistic and docker-for-apple-container sitemaps.
+     The location must be the address that serves the page, not the github.io
+     address that redirects to it. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://appautomaton.renocrypt.com/mlx-h3/</loc>
+    <lastmod>2026-08-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>
