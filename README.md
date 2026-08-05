@@ -10,6 +10,8 @@
 [![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-native-000000?style=flat-square&logo=apple&logoColor=white)](https://support.apple.com/mac/)
 [![MLX](https://img.shields.io/badge/backend-MLX-7C3AED?style=flat-square)](https://github.com/ml-explore/mlx)
 
+[**appautomaton.github.io/mlx-h3**](https://appautomaton.github.io/mlx-h3/)
+
 </div>
 
 `mlx-h3` is an independent, pure-MLX inference runtime for
@@ -163,6 +165,7 @@ Reference notes live in [docs/](docs/): [architecture](docs/architecture.md) (wh
 
 - Distribution and CLI: `mlx-h3`
 - Python import package: `mlx_h3`
+- Project page: [appautomaton.github.io/mlx-h3](https://appautomaton.github.io/mlx-h3/)
 - Repository: [appautomaton/mlx-h3](https://github.com/appautomaton/mlx-h3)
 - Runtime: pure MLX on Apple silicon
 

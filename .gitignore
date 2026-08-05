@@ -6,6 +6,9 @@
 !.githooks/**
 !.gitignore
 !.python-version
+# re-ignore after the .github/.githooks exceptions above, which would otherwise
+# un-ignore Finder metadata inside those directories
+.DS_Store
 *.swp
 
 # Caches, reports, and build artifacts

@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mlx-h3 — MiniMax-H3 video and audio generation in pure MLX for Apple silicon</title>
+<meta name="description" content="A pure-MLX inference runtime for MiniMax-H3. Text to synchronized video and stereo audio on Apple silicon, with phase-scoped memory residency and no PyTorch at runtime.">
+<meta name="author" content="appautomaton">
+<link rel="canonical" href="https://appautomaton.github.io/mlx-h3/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="mlx-h3">
+<meta property="og:title" content="mlx-h3 — MiniMax-H3 in pure MLX">
+<meta property="og:description" content="Text to synchronized video and stereo audio on Apple silicon. One packed sequence, one transformer call per step, no PyTorch at runtime.">
+<meta property="og:url" content="https://appautomaton.github.io/mlx-h3/">
+<meta property="og:image" content="https://opengraph.githubassets.com/1/appautomaton/mlx-h3">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="mlx-h3 — MiniMax-H3 in pure MLX">
+<meta name="twitter:description" content="Text to synchronized video and stereo audio on Apple silicon. One packed sequence, one transformer call per step, no PyTorch at runtime.">
+<meta name="twitter:image" content="https://opengraph.githubassets.com/1/appautomaton/mlx-h3">
+
+<meta name="theme-color" content="#0B0906">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400..800&family=Newsreader:ital,opsz,wght@0,6..72,200..600;1,6..72,200..600&family=Martian+Mono:wdth,wght@75..112.5,300..600&display=swap">
+<link rel="stylesheet" href="styles.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "mlx-h3",
+  "description": "A pure-MLX inference runtime for MiniMax-H3. Text to synchronized video and stereo audio on Apple silicon.",
+  "url": "https://appautomaton.github.io/mlx-h3/",
+  "codeRepository": "https://github.com/appautomaton/mlx-h3",
+  "downloadUrl": "https://pypi.org/project/mlx-h3/",
+  "softwareVersion": "0.0.1a2",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "macOS on Apple silicon",
+  "programmingLanguage": "Python",
+  "runtimePlatform": "MLX",
+  "author": {
+    "@type": "Organization",
+    "name": "appautomaton",
+    "url": "https://github.com/appautomaton"
+  },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="masthead">
+  <div class="masthead__in">
+    <a class="brand" href="/mlx-h3/">
+      <span class="brand__mark" aria-hidden="true"></span>
+      <span class="brand__name">mlx-h3</span>
+    </a>
+    <span class="chip chip--pre">v0.0.1a2 · pre-alpha</span>
+    <nav class="masthead__nav" aria-label="Primary">
+      <a href="#pipeline">Pipeline</a>
+      <a href="#scope">Scope</a>
+      <a href="#run">Run</a>
+      <a href="#spec">Spec</a>
+      <a class="masthead__out" href="https://pypi.org/project/mlx-h3/" rel="noopener">PyPI</a>
+      <a class="masthead__out" href="https://github.com/appautomaton/mlx-h3" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ── hero ─────────────────────────────────────────────────────────── -->
+  <section class="hero">
+    <p class="eyebrow">Pure MLX runtime · Apple silicon · No PyTorch</p>
+
+    <h1 class="hero__title">
+      <span class="hero__l1">MiniMax&#8209;H3</span>
+      <span class="hero__l2">in pure MLX.</span>
+    </h1>
+
+    <p class="lede">
+      Text to synchronized video and stereo audio on Apple silicon.
+      One packed sequence, one transformer call per step, and nothing from the
+      CUDA stack anywhere in the runtime.
+    </p>
+
+    <!-- ── signature: the packed sequence ──────────────────────────────── -->
+    <figure class="instrument" id="instrument">
+      <figcaption class="instrument__cap">
+        <span class="instrument__title">One packed sequence</span>
+        <span class="instrument__sub">Text, conditioning, audio and video rows denoise together in a single self-attention pass.</span>
+      </figcaption>
+
+      <ul class="legend" id="legend">
+        <li class="legend__i legend__i--text"><span class="legend__sw"></span><span class="legend__k">text</span><span class="legend__v" data-rows="text">—</span></li>
+        <li class="legend__i legend__i--cond"><span class="legend__sw"></span><span class="legend__k">cond</span><span class="legend__v" data-rows="cond">—</span></li>
+        <li class="legend__i legend__i--audio"><span class="legend__sw"></span><span class="legend__k">audio</span><span class="legend__v" data-rows="audio">—</span></li>
+        <li class="legend__i legend__i--video"><span class="legend__sw"></span><span class="legend__k">video</span><span class="legend__v" data-rows="video">—</span></li>
+      </ul>
+
+      <div class="band">
+        <svg class="band__svg" id="band" viewBox="0 0 1200 132" preserveAspectRatio="none" role="img"
+             aria-label="The packed sequence, drawn to true proportion: a narrow band of text and audio rows beside a much larger block of video rows, resolving from noise over twenty denoising steps.">
+        </svg>
+        <div class="band__ticks" id="ticks" aria-hidden="true"></div>
+      </div>
+
+      <div class="curves">
+        <svg class="curves__svg" id="curves" viewBox="0 0 1200 190" role="img"
+             aria-label="Two sigma schedules descending from one to zero over twenty steps. The video schedule uses shift 12 and falls late; the audio schedule uses shift 3 and falls earlier. Both advance on the same step clock.">
+        </svg>
+      </div>
+
+      <div class="readout" id="readout">
+        <div class="readout__i"><span class="readout__k">step</span><span class="readout__v" id="r-step">00 / 20</span></div>
+        <div class="readout__i"><span class="readout__k">σ video</span><span class="readout__v readout__v--vid" id="r-sv">1.0000</span></div>
+        <div class="readout__i"><span class="readout__k">σ audio</span><span class="readout__v readout__v--aud" id="r-sa">1.0000</span></div>
+        <div class="readout__i"><span class="readout__k">seq len</span><span class="readout__v" id="r-seq">—</span></div>
+        <div class="readout__i"><span class="readout__k">attn cost</span><span class="readout__v" id="r-cost">—</span></div>
+      </div>
+
+      <div class="presets" role="group" aria-label="Canvas preset">
+        <span class="presets__k">canvas</span>
+        <button class="preset" type="button" data-w="512" data-h="288" data-f="56">512×288 · 56f</button>
+        <button class="preset is-on" type="button" data-w="864" data-h="480" data-f="56">864×480 · 56f</button>
+        <button class="preset" type="button" data-w="768" data-h="448" data-f="124">768×448 · 124f</button>
+        <button class="preset" type="button" data-w="1344" data-h="768" data-f="124">1344×768 · 124f</button>
+      </div>
+
+      <p class="instrument__note">
+        Row counts and both σ grids are computed here with the same rules the runtime uses:
+        <span class="ic">17n+5</span> frame alignment, <span class="ic">f16</span> spatial and
+        <span class="ic">4×</span> temporal VAE compression, a <span class="ic">1×2×2</span> patch,
+        40&nbsp;Hz stereo audio latents, and the <span class="ic">simple</span> schedule shifted by
+        <span class="ic">12.0</span> for video and <span class="ic">3.0</span> for audio.
+        The band is drawn to true proportion, with one first-frame keyframe so the
+        conditioning rows are visible. Video rows dominate every real request —
+        that asymmetry is the reason canvas and frame count are the only levers
+        with real leverage on wall clock.
+      </p>
+    </figure>
+
+    <div class="cta">
+      <div class="cta__cmd">
+        <code id="install-cmd">uv tool install --prerelease allow mlx-h3==0.0.1a2</code>
+        <button class="copy" type="button" data-copy="#install-cmd" aria-label="Copy install command">copy</button>
+      </div>
+      <a class="btn btn--ghost" href="https://github.com/appautomaton/mlx-h3" rel="noopener">Read the source</a>
+    </div>
+  </section>
+
+  <!-- ── one dependency ──────────────────────────────────────────────── -->
+  <section class="section section--dep" id="dep">
+    <p class="eyebrow">Dependency surface</p>
+    <div class="dep">
+      <div class="dep__lead">
+        <p class="dep__num"><code>mlx&gt;=0.32</code></p>
+        <p class="dep__cap">That is the entire runtime dependency list.</p>
+      </div>
+      <div class="dep__body">
+        <p class="prose">
+          Four obvious dependencies are absent on purpose. Each was left out for a
+          stated reason, not by oversight, and each reason is recorded in
+          <span class="ic">pyproject.toml</span> next to the exclusion.
+        </p>
+        <dl class="omit">
+          <div class="omit__i">
+            <dt class="omit__t">torch</dt>
+            <dd class="omit__d">The runtime and its validation path are pure MLX. No CUDA, no Triton, no PyTorch execution.</dd>
+          </div>
+          <div class="omit__i">
+            <dt class="omit__t">huggingface_hub</dt>
+            <dd class="omit__d">Ships telemetry. Weights stay local; downloads use the standalone <span class="ic">hf</span> CLI.</dd>
+          </div>
+          <div class="omit__i">
+            <dt class="omit__t">safetensors</dt>
+            <dd class="omit__d">Redundant. <span class="ic">mx.load()</span> reads safetensors natively.</dd>
+          </div>
+          <div class="omit__i">
+            <dt class="omit__t">tokenizers</dt>
+            <dd class="omit__d">A local byte-level BPE reads <span class="ic">tokenizer.json</span> without Hugging Face dependencies.</dd>
+          </div>
+          <div class="omit__i">
+            <dt class="omit__t">av</dt>
+            <dd class="omit__d">Media I/O calls the external <span class="ic">ffmpeg</span> and <span class="ic">ffprobe</span> executables.</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── residency ───────────────────────────────────────────────────── -->
+  <section class="section" id="pipeline">
+    <p class="eyebrow">Memory</p>
+    <h2 class="h2">One large model is resident at a time.</h2>
+    <p class="prose prose--wide">
+      The pipeline is phase-scoped. Each stage loads its weights, materializes its
+      output, releases, and asserts the memory came back before the next stage
+      begins. Peak residency is therefore the largest single phase, not the sum of
+      the checkpoints on disk.
+    </p>
+
+    <div class="peak">
+      <div class="peak__i peak__i--on">
+        <span class="peak__n">27.7</span><span class="peak__u">GiB</span>
+        <span class="peak__k">peak resident, staged</span>
+      </div>
+      <div class="peak__vs" aria-hidden="true">not</div>
+      <div class="peak__i peak__i--off">
+        <span class="peak__n">62.5</span><span class="peak__u">GiB</span>
+        <span class="peak__k">DiT + encoder, unstaged</span>
+      </div>
+    </div>
+
+    <div class="res" role="table" aria-label="Resident weight footprint per pipeline phase, against a 70 GiB budget">
+      <div class="res__head" role="row">
+        <span role="columnheader">Phase</span>
+        <span role="columnheader" class="res__scale">0</span>
+        <span role="columnheader" class="res__budget">70 GiB budget</span>
+      </div>
+
+      <div class="res__row" role="row">
+        <span class="res__k" role="cell">Text / vision encode</span>
+        <span class="res__bar" role="cell"><i class="res__fill" style="--pct:39.6%"></i></span>
+        <span class="res__v" role="cell">27.7</span>
+      </div>
+      <div class="res__row" role="row">
+        <span class="res__k" role="cell">Joint denoise <em class="res__em">after AdaLN precompute</em></span>
+        <span class="res__bar" role="cell"><i class="res__ghost" style="--pct:49.7%"></i><i class="res__fill" style="--pct:30.3%"></i></span>
+        <span class="res__v" role="cell">21.2</span>
+      </div>
+      <div class="res__row" role="row">
+        <span class="res__k" role="cell">Video decode</span>
+        <span class="res__bar" role="cell"><i class="res__fill" style="--pct:7%"></i></span>
+        <span class="res__v" role="cell">4.9</span>
+      </div>
+      <div class="res__row" role="row">
+        <span class="res__k" role="cell">Audio decode</span>
+        <span class="res__bar" role="cell"><i class="res__fill" style="--pct:0.9%"></i></span>
+        <span class="res__v" role="cell">0.6</span>
+      </div>
+    </div>
+
+    <p class="footnote">
+      The ghost bar is the DiT as stored, 34.8&nbsp;GiB. Roughly 13&nbsp;GiB of that
+      sits in AdaLN branches whose output depends only on timestep and modality, so
+      the runtime materializes the request's exact modulation tables and releases
+      those weights block by block before the first sampling step.
+      Swap activity is a hard failure, never a warning.
+    </p>
+  </section>
+
+  <!-- ── scope ───────────────────────────────────────────────────────── -->
+  <section class="section" id="scope">
+    <p class="eyebrow">Scope</p>
+    <h2 class="h2">What runs locally, and what does not.</h2>
+    <p class="prose prose--wide">
+      MiniMax released three stages and opened the middle one. This runtime covers
+      exactly that stage. The other two are API-only upstream, and no amount of
+      local work changes that.
+    </p>
+
+    <ul class="scope">
+      <li class="scope__i is-on"><span class="scope__s">works</span><span class="scope__k">Text to video and audio</span><span class="scope__d">T2VA, joint generation from a prompt alone.</span></li>
+      <li class="scope__i is-on"><span class="scope__s">works</span><span class="scope__k">First / last frame conditioning</span><span class="scope__d">FL2VA, zero to two keyframe anchors.</span></li>
+      <li class="scope__i is-on"><span class="scope__s">works</span><span class="scope__k">Ordered references</span><span class="scope__d">Ref2VA, up to 9 images, 3 videos and 3 audio clips. Order is meaningful.</span></li>
+      <li class="scope__i is-on"><span class="scope__s">works</span><span class="scope__k">Reference-video soundtrack</span><span class="scope__d">Keep, mute or override a reference video's audio.</span></li>
+      <li class="scope__i is-on"><span class="scope__s">works</span><span class="scope__k">Synchronized H.264 / AAC MP4</span><span class="scope__d">Muxed output, 24 fps video and 32 kHz stereo.</span></li>
+      <li class="scope__i is-on"><span class="scope__s">works</span><span class="scope__k">8-bit DiT and text encoder</span><span class="scope__d">MLX affine, group size 32, produced locally.</span></li>
+      <li class="scope__i is-off"><span class="scope__s">upstream</span><span class="scope__k">Context-IR</span><span class="scope__d">The prompt-expansion stage is API-only. Plain prompts will underperform the official demos without it.</span></li>
+      <li class="scope__i is-off"><span class="scope__s">upstream</span><span class="scope__k">2K regeneration</span><span class="scope__d">Not super-resolution — H3 regenerating its own 768p result in context. Withheld for now.</span></li>
+    </ul>
+  </section>
+
+  <!-- ── run ─────────────────────────────────────────────────────────── -->
+  <section class="section" id="run">
+    <p class="eyebrow">Run it</p>
+    <h2 class="h2">A CLI, and a directory of weights.</h2>
+    <p class="prose prose--wide">
+      Model files never enter the repository or the published package. Point the
+      runtime at a local checkout of the MiniMax-H3 tokenizer and checkpoints and
+      it will do the rest.
+    </p>
+
+    <div class="codes">
+      <figure class="code">
+        <figcaption class="code__cap"><span class="code__t">Install</span>
+          <button class="copy" type="button" data-copy="#c-install" aria-label="Copy install commands">copy</button>
+        </figcaption>
+        <pre class="code__b" id="c-install"><code><span class="c-c"># from PyPI</span>
+uv tool install <span class="c-f">--prerelease</span> allow mlx-h3==0.0.1a2
+
+<span class="c-c"># or from a checkout</span>
+git clone https://github.com/appautomaton/mlx-h3.git
+<span class="c-b">cd</span> mlx-h3 <span class="c-o">&amp;&amp;</span> uv sync</code></pre>
+      </figure>
+
+      <figure class="code">
+        <figcaption class="code__cap"><span class="code__t">Generate</span>
+          <button class="copy" type="button" data-copy="#c-gen" aria-label="Copy generate command">copy</button>
+        </figcaption>
+        <pre class="code__b" id="c-gen"><code>uv run mlx-h3 <span class="c-s">"$MLX_H3_INPUT_TEXT"</span> <span class="c-o">\</span>
+  <span class="c-f">--width</span> 864 <span class="c-f">--height</span> 480 <span class="c-o">\</span>
+  <span class="c-f">--frames</span> 56 <span class="c-f">--steps</span> 20 <span class="c-o">\</span>
+  <span class="c-f">--seed</span> 42 <span class="c-o">\</span>
+  <span class="c-f">--output</span> result.mp4</code></pre>
+      </figure>
+    </div>
+
+    <div class="reqs">
+      <h3 class="h3">Before you start</h3>
+      <ul class="reqs__l">
+        <li>An Apple silicon Mac with enough unified memory for the canvas and frame count you ask for.</li>
+        <li>Python 3.13 or newer, and <span class="ic">ffmpeg</span> on <span class="ic">PATH</span>.</li>
+        <li>A local MiniMax-H3 tokenizer and checkpoints. Nothing is downloaded for you.</li>
+        <li>Room under the memory budget, which defaults to 70&nbsp;GiB. It is a guardrail, not a promise.</li>
+      </ul>
+      <p class="footnote">
+        Keep prompt text in your shell environment or an untracked file. Use
+        <span class="ic">--steps 10</span> for a fast preview;
+        <span class="ic">--steps 20</span> is the quality baseline.
+        Run <span class="ic">mlx-h3 --help</span> for every checkpoint path override.
+      </p>
+    </div>
+  </section>
+
+  <!-- ── spec ────────────────────────────────────────────────────────── -->
+  <section class="section" id="spec">
+    <p class="eyebrow">Specification</p>
+    <h2 class="h2">Measured, not paraphrased.</h2>
+
+    <div class="spec">
+      <div class="spec__g">
+        <h3 class="spec__h">Transformer</h3>
+        <dl class="spec__l">
+          <div><dt>Parameters</dt><dd>33B dense</dd></div>
+          <div><dt>Layers</dt><dd>50 + 2 refiner</dd></div>
+          <div><dt>Hidden size</dt><dd>5376</dd></div>
+          <div><dt>Attention</dt><dd>56 heads × 128</dd></div>
+          <div><dt>FFN</dt><dd>14336</dd></div>
+          <div><dt>Patch</dt><dd>1 × 2 × 2</dd></div>
+          <div><dt>Latent channels</dt><dd>24 video / 32 audio</dd></div>
+          <div><dt>RoPE θ</dt><dd>10000.0</dd></div>
+        </dl>
+      </div>
+
+      <div class="spec__g">
+        <h3 class="spec__h">Components</h3>
+        <dl class="spec__l">
+          <div><dt>Encoder</dt><dd>Qwen3-VL-32B</dd></div>
+          <div><dt>Read depth</dt><dd>layers 0–49 of 64</dd></div>
+          <div><dt>Visual VAE</dt><dd>f16t4d24, ViT decoder</dd></div>
+          <div><dt>Audio VAE</dt><dd>32 kHz stereo → 40 Hz</dd></div>
+          <div><dt>Solver</dt><dd>res_multistep</dd></div>
+          <div><dt>Schedule</dt><dd>simple, 20 steps</dd></div>
+          <div><dt>Guidance</dt><dd>distilled into weights</dd></div>
+          <div><dt>Quantization</dt><dd>MLX affine 8-bit, g32</dd></div>
+        </dl>
+      </div>
+
+      <div class="spec__g">
+        <h3 class="spec__h">Output</h3>
+        <dl class="spec__l">
+          <div><dt>Duration</dt><dd>4–15 s</dd></div>
+          <div><dt>Frame rate</dt><dd>24 fps</dd></div>
+          <div><dt>Frame count</dt><dd>aligned to 17n + 5</dd></div>
+          <div><dt>Axes</dt><dd>multiples of 32</dd></div>
+          <div><dt>Max area</dt><dd>768 × 1344</dd></div>
+          <div><dt>Audio</dt><dd>32 kHz stereo</dd></div>
+          <div><dt>Container</dt><dd>H.264 / AAC MP4</dd></div>
+          <div><dt>Languages</dt><dd>11 with stable support</dd></div>
+        </dl>
+      </div>
+    </div>
+
+    <p class="footnote">
+      Attention dominates and grows as O(S²) while everything else in a block is
+      linear in S. Canvas times frames is the only lever with real leverage on wall
+      clock. MLX's full-attention kernel already runs near roofline at these shapes.
+    </p>
+  </section>
+
+  <!-- ── ecosystem ───────────────────────────────────────────────────── -->
+  <section class="section section--eco" id="eco">
+    <p class="eyebrow">Elsewhere</p>
+    <h2 class="h2">Where the rest of it lives.</h2>
+    <div class="eco">
+      <a class="eco__i" href="https://pypi.org/project/mlx-h3/" rel="noopener">
+        <span class="eco__k">PyPI</span>
+        <span class="eco__n">mlx-h3</span>
+        <span class="eco__d">The published pre-release. One runtime dependency.</span>
+      </a>
+      <a class="eco__i" href="https://github.com/appautomaton/mlx-h3" rel="noopener">
+        <span class="eco__k">Repository</span>
+        <span class="eco__n">appautomaton/mlx-h3</span>
+        <span class="eco__d">Source, architecture notes, porting notes and weight rules.</span>
+      </a>
+      <a class="eco__i" href="https://github.com/appautomaton" rel="noopener">
+        <span class="eco__k">Organization</span>
+        <span class="eco__n">appautomaton</span>
+        <span class="eco__d">Everything else built under the same roof.</span>
+      </a>
+      <a class="eco__i" href="https://github.com/appautomaton/mlx-h3/releases" rel="noopener">
+        <span class="eco__k">Releases</span>
+        <span class="eco__n">v0.0.1a2</span>
+        <span class="eco__d">Tagged pre-releases and their notes.</span>
+      </a>
+      <a class="eco__i" href="https://github.com/appautomaton/mlx-h3/issues" rel="noopener">
+        <span class="eco__k">Issues</span>
+        <span class="eco__n">Report a problem</span>
+        <span class="eco__d">Porting slips and memory regressions especially welcome.</span>
+      </a>
+      <a class="eco__i" href="https://huggingface.co/MiniMaxAI/MiniMax-H3" rel="noopener">
+        <span class="eco__k">Upstream model</span>
+        <span class="eco__n">MiniMaxAI/MiniMax-H3</span>
+        <span class="eco__d">The weights and the official model card.</span>
+      </a>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="foot__in">
+    <div class="foot__brand">
+      <span class="brand__mark" aria-hidden="true"></span>
+      <span class="brand__name">mlx-h3</span>
+      <span class="foot__ver">0.0.1a2</span>
+    </div>
+    <p class="foot__note">
+      Pre-alpha. Model files are not included in the repository or the PyPI package.
+      This project is independent, and is not affiliated with or endorsed by MiniMax.
+    </p>
+    <nav class="foot__nav" aria-label="Footer">
+      <a href="https://github.com/appautomaton/mlx-h3" rel="noopener">GitHub</a>
+      <a href="https://pypi.org/project/mlx-h3/" rel="noopener">PyPI</a>
+      <a href="https://github.com/appautomaton" rel="noopener">appautomaton</a>
+      <a href="https://github.com/ml-explore/mlx" rel="noopener">MLX</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="app.js" defer></script>
+</body>
+</html>
