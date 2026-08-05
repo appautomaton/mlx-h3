@@ -195,6 +195,24 @@ a { color: inherit; text-decoration: none; }
 
 .brand { display: inline-flex; align-items: center; gap: .6rem; }
 
+/* The page is served under the workshop's own domain, so the masthead states
+   that hierarchy rather than pretending this is a standalone site. */
+.crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  min-width: 0;
+}
+.crumb__up,
+.crumb__sep {
+  font-family: var(--mono);
+  font-size: .8125rem;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.crumb__up { transition: color .2s var(--ease); }
+.crumb__up:hover { color: var(--amber); }
+
 .brand__mark {
   width: 11px;
   height: 11px;
@@ -818,15 +836,14 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ══ ecosystem ══════════════════════════════════════════════════════════ */
+/* Hairlines come from each card's own outline rather than a container
+   background showing through the gaps, so a part-filled last row leaves no
+   empty box behind. The card count can then change freely. */
 .eco {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
   gap: 1px;
   margin-top: 2.5rem;
-  background: var(--rule);
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  overflow: hidden;
 }
 .eco__i {
   display: flex;
@@ -834,9 +851,12 @@ a { color: inherit; text-decoration: none; }
   gap: .4rem;
   padding: 1.5rem 1.35rem 1.65rem;
   background: var(--ink);
+  box-shadow: 0 0 0 1px var(--rule);
   transition: background-color .25s var(--ease);
 }
 .eco__i:hover { background: var(--shelf); }
+/* the parent relationship, marked once and quietly */
+.eco__i--lead .eco__k { color: var(--amber); }
 .eco__k {
   font-family: var(--mono);
   font-size: .625rem;
@@ -875,6 +895,14 @@ a { color: inherit; text-decoration: none; }
   line-height: 1.65;
   color: var(--faint);
 }
+.foot__link {
+  color: var(--dust);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-2);
+  text-underline-offset: .2em;
+  transition: color .2s var(--ease), text-decoration-color .2s var(--ease);
+}
+.foot__link:hover { color: var(--amber); text-decoration-color: var(--amber-d); }
 .foot__nav {
   grid-column: 2;
   display: flex;

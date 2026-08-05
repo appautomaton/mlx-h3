@@ -41,12 +41,33 @@
   "operatingSystem": "macOS on Apple silicon",
   "programmingLanguage": "Python",
   "runtimePlatform": "MLX",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "App Automaton",
+    "url": "https://appautomaton.renocrypt.com/"
+  },
   "author": {
     "@type": "Organization",
-    "name": "appautomaton",
-    "url": "https://github.com/appautomaton"
+    "name": "App Automaton",
+    "alternateName": "appautomaton",
+    "url": "https://appautomaton.renocrypt.com/",
+    "sameAs": [
+      "https://github.com/appautomaton",
+      "https://huggingface.co/appautomaton"
+    ]
   },
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "App Automaton", "item": "https://appautomaton.renocrypt.com/" },
+    { "@type": "ListItem", "position": 2, "name": "mlx-h3", "item": "https://appautomaton.renocrypt.com/mlx-h3/" }
+  ]
 }
 </script>
 </head>
@@ -55,10 +76,12 @@
 
 <header class="masthead">
   <div class="masthead__in">
-    <a class="brand" href="/mlx-h3/">
+    <nav class="crumb" aria-label="Breadcrumb">
       <span class="brand__mark" aria-hidden="true"></span>
-      <span class="brand__name">mlx-h3</span>
-    </a>
+      <a class="crumb__up" href="https://appautomaton.renocrypt.com/">App&nbsp;Automaton</a>
+      <span class="crumb__sep" aria-hidden="true">/</span>
+      <a class="brand__name" href="/mlx-h3/" aria-current="page">mlx-h3</a>
+    </nav>
     <span class="chip chip--pre">v0.0.1a2 · pre-alpha</span>
     <nav class="masthead__nav" aria-label="Primary">
       <a href="#pipeline">Pipeline</a>
@@ -389,6 +412,11 @@ git clone https://github.com/appautomaton/mlx-h3.git
     <p class="eyebrow">Elsewhere</p>
     <h2 class="h2">Where the rest of it lives.</h2>
     <div class="eco">
+      <a class="eco__i eco__i--lead" href="https://appautomaton.renocrypt.com/">
+        <span class="eco__k">The workshop</span>
+        <span class="eco__n">App Automaton</span>
+        <span class="eco__d">The open workshop this runtime is built in. Portable skills, stage-gated harnesses, and pure-MLX work for Apple silicon.</span>
+      </a>
       <a class="eco__i" href="https://pypi.org/project/mlx-h3/" rel="noopener">
         <span class="eco__k">PyPI</span>
         <span class="eco__n">mlx-h3</span>
@@ -400,9 +428,14 @@ git clone https://github.com/appautomaton/mlx-h3.git
         <span class="eco__d">Source, architecture notes, porting notes and weight rules.</span>
       </a>
       <a class="eco__i" href="https://github.com/appautomaton" rel="noopener">
-        <span class="eco__k">Organization</span>
+        <span class="eco__k">GitHub</span>
         <span class="eco__n">appautomaton</span>
         <span class="eco__d">Everything else built under the same roof.</span>
+      </a>
+      <a class="eco__i" href="https://huggingface.co/appautomaton" rel="noopener">
+        <span class="eco__k">Hugging Face</span>
+        <span class="eco__n">appautomaton</span>
+        <span class="eco__d">Models and artifacts published from the same workshop.</span>
       </a>
       <a class="eco__i" href="https://github.com/appautomaton/mlx-h3/releases" rel="noopener">
         <span class="eco__k">Releases</span>
@@ -419,6 +452,11 @@ git clone https://github.com/appautomaton/mlx-h3.git
         <span class="eco__n">MiniMaxAI/MiniMax-H3</span>
         <span class="eco__d">The weights and the official model card.</span>
       </a>
+      <a class="eco__i" href="https://github.com/ml-explore/mlx" rel="noopener">
+        <span class="eco__k">Backend</span>
+        <span class="eco__n">ml-explore/mlx</span>
+        <span class="eco__d">The array framework the whole runtime is written against.</span>
+      </a>
     </div>
   </section>
 </main>
@@ -431,13 +469,16 @@ git clone https://github.com/appautomaton/mlx-h3.git
       <span class="foot__ver">0.0.1a2</span>
     </div>
     <p class="foot__note">
+      A project of <a class="foot__link" href="https://appautomaton.renocrypt.com/">App Automaton</a>,
+      an open workshop for engineering with coding agents.
       Pre-alpha. Model files are not included in the repository or the PyPI package.
       This project is independent, and is not affiliated with or endorsed by MiniMax.
     </p>
     <nav class="foot__nav" aria-label="Footer">
+      <a href="https://appautomaton.renocrypt.com/">App Automaton</a>
       <a href="https://github.com/appautomaton/mlx-h3" rel="noopener">GitHub</a>
       <a href="https://pypi.org/project/mlx-h3/" rel="noopener">PyPI</a>
-      <a href="https://github.com/appautomaton" rel="noopener">appautomaton</a>
+      <a href="https://huggingface.co/appautomaton" rel="noopener">Hugging Face</a>
       <a href="https://github.com/ml-explore/mlx" rel="noopener">MLX</a>
     </nav>
   </div>
