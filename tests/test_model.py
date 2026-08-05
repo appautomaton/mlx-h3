@@ -290,6 +290,54 @@ def test_step_returns_raw_data_ward_velocities(packed, tiny):
     assert mx.abs(da - want_a).max().item() < 1e-5
 
 
+def test_precomputed_adaln_matches_weight_path_and_releases_projections(packed):
+    mx.random.seed(7)
+    tiny = model.MiniMaxH3(TINY)
+    tiny.rope.inv_freq = mx.array([1.0, 0.1, 0.01, 0.001])
+    video = mx.random.normal((1, TINY.latents_dim, LATENT_T, LATENT_H, LATENT_W))
+    audio = mx.random.normal((1, TINY.audio_latents_dim, 2, AUDIO_T))
+    text = mx.random.normal((TEXT_LEN, TINY.hidden_size))
+    sigma_video = 0.5
+    sigma_audio = layout.audio_sigma(sigma_video)
+    step = model.plan(
+        packed,
+        sigma_video=sigma_video,
+        sigma_audio=sigma_audio,
+    )
+
+    expected = tiny(
+        video,
+        audio,
+        text,
+        packed,
+        sigma_video=sigma_video,
+        sigma_audio=sigma_audio,
+    )
+    mx.eval(expected)
+
+    tiny.precompute_adaln((step,), dtype=text.dtype)
+    actual = tiny(
+        video,
+        audio,
+        text,
+        packed,
+        sigma_video=sigma_video,
+        sigma_audio=sigma_audio,
+        step_index=0,
+    )
+    mx.eval(actual)
+
+    max_error = max(
+        mx.abs(got - want).max().item()
+        for got, want in zip(actual, expected, strict=True)
+    )
+    assert max_error < 1e-5
+    assert tiny.has_precomputed_adaln
+    assert tiny.time_embedder is None
+    assert all(block.adaln_proj is None for block in tiny.blocks)
+    assert tiny.final_layer.adaln_proj is None
+
+
 def test_config_matches_the_checkpoint():
     """Geometry is read off the checkpoint, not trusted from the dataclass."""
     ckpt = Path(__file__).resolve().parents[1] / "weights/mlx-8bit/dit_fl2va_a8g32.safetensors"

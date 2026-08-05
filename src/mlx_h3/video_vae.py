@@ -1,8 +1,9 @@
-"""MLX decoder for the MiniMax-H3 visual VAE.
+"""MLX encoder and decoder for the MiniMax-H3 visual VAE.
 
 The released VAE is asymmetric: its encoder is a causal 3D CNN, while the
-decoder is a 36-block non-causal Vision Transformer. This module ports only the
-decoder needed by text-to-video-and-audio inference.
+decoder is a 36-block non-causal Vision Transformer. The two paths remain
+separate modules so FL2VA can encode keyframes and release the CNN before any
+large text or DiT model is loaded.
 
 VALIDATION. Temporal and spatial plans are checked against the local reference
 implementations, and the module tree is checked against the real checkpoint.
@@ -29,6 +30,7 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 @dataclass(frozen=True)
 class VideoVAEConfig:
     latent_channels: int = 24
+    in_channels: int = 3
     out_channels: int = 3
     hidden_size: int = 2048
     num_layers: int = 36
@@ -45,6 +47,13 @@ class VideoVAEConfig:
     token_drop: int = 3
     tile_size: int = 256
     tile_overlap: int = 64
+    encoder_base_channels: int = 128
+    encoder_channel_multipliers: tuple[int, ...] = (1, 2, 2, 4, 4, 8)
+    encoder_num_res_blocks: int = 2
+    encoder_space_down: tuple[int, ...] = (2, 2, 2, 2, 1, 1)
+    encoder_time_down: tuple[int, ...] = (1, 2, 2, 1, 1, 1)
+    encoder_norm_groups: int = 32
+    encoder_norm_eps: float = 1e-6
 
     @property
     def rope_dim(self) -> int:
@@ -402,6 +411,332 @@ def _blend(
     rest = [slice(None)] * current.ndim
     rest[axis] = slice(extent, None)
     return mx.concatenate([mixed, current[tuple(rest)]], axis=axis)
+
+
+def _reflect_pad_axis(
+    x: mx.array, before: int, after: int, axis: int
+) -> mx.array:
+    """Apply PyTorch-style reflection padding along one spatial axis."""
+    axis %= x.ndim
+    length = x.shape[axis]
+    if before < 0 or after < 0 or before >= length or after >= length:
+        raise ValueError(
+            f"invalid reflection padding ({before}, {after}) for axis length {length}"
+        )
+    if before == 0 and after == 0:
+        return x
+    indices = (
+        list(range(before, 0, -1))
+        + list(range(length))
+        + list(range(length - 2, length - after - 2, -1))
+    )
+    return mx.take(x, mx.array(indices, dtype=mx.int32), axis=axis)
+
+
+class CausalConv3d(nn.Conv3d):
+    """Channels-last Conv3d with reflect-spatial and front-zero time padding."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int | tuple[int, int, int],
+        *,
+        stride: int | tuple[int, int, int] = 1,
+        padding: int | tuple[int, int, int] = 0,
+    ):
+        super().__init__(
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=stride,
+            padding=0,
+        )
+        self.causal_padding = (
+            (padding, padding, padding) if isinstance(padding, int) else padding
+        )
+
+    def __call__(self, x: mx.array) -> mx.array:
+        time, height, width = self.causal_padding
+        if height:
+            x = _reflect_pad_axis(x, height, height, 2)
+        if width:
+            x = _reflect_pad_axis(x, width, width, 3)
+        if time:
+            x = mx.pad(x, [(0, 0), (time * 2, 0), (0, 0), (0, 0), (0, 0)])
+        return super().__call__(x)
+
+
+class TemporalIsolatedGroupNorm(nn.Module):
+    """GroupNorm over one frame at a time, matching the causal CNN encoder."""
+
+    def __init__(self, channels: int, groups: int, eps: float):
+        super().__init__()
+        if channels % groups:
+            raise ValueError(f"{channels} channels are not divisible by {groups} groups")
+        self.groups = groups
+        self.eps = eps
+        self.weight = mx.ones((channels,))
+        self.bias = mx.zeros((channels,))
+
+    def __call__(self, x: mx.array) -> mx.array:
+        batch, temporal, height, width, channels = x.shape
+        xf = x.astype(mx.float32).reshape(
+            batch * temporal,
+            height,
+            width,
+            self.groups,
+            channels // self.groups,
+        )
+        mean = mx.mean(xf, axis=(1, 2, 4), keepdims=True)
+        centered = xf - mean
+        variance = mx.mean(centered * centered, axis=(1, 2, 4), keepdims=True)
+        normalized = (centered * mx.rsqrt(variance + self.eps)).reshape(
+            batch, temporal, height, width, channels
+        )
+        return (
+            normalized * self.weight.astype(mx.float32)
+            + self.bias.astype(mx.float32)
+        ).astype(x.dtype)
+
+
+class EncoderResnetBlock(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, config: VideoVAEConfig):
+        super().__init__()
+        groups = config.encoder_norm_groups
+        eps = config.encoder_norm_eps
+        self.norm1 = TemporalIsolatedGroupNorm(in_channels, groups, eps)
+        self.conv1 = CausalConv3d(in_channels, out_channels, 3, padding=1)
+        self.norm2 = TemporalIsolatedGroupNorm(out_channels, groups, eps)
+        self.conv2 = CausalConv3d(out_channels, out_channels, 3, padding=1)
+        self.nin_shortcut = (
+            CausalConv3d(in_channels, out_channels, 1)
+            if in_channels != out_channels
+            else None
+        )
+
+    def __call__(self, x: mx.array) -> mx.array:
+        hidden = self.conv1(nn.silu(self.norm1(x)))
+        hidden = self.conv2(nn.silu(self.norm2(hidden)))
+        residual = x if self.nin_shortcut is None else self.nin_shortcut(x)
+        return residual + hidden
+
+
+class EncoderDownsample(nn.Module):
+    def __init__(
+        self,
+        channels: int,
+        *,
+        time_stride: int,
+        space_stride: int,
+    ):
+        super().__init__()
+        self.space_stride = space_stride
+        self.conv = CausalConv3d(
+            channels,
+            channels,
+            3,
+            stride=(time_stride, space_stride, space_stride),
+            padding=(1, 0, 0),
+        )
+
+    def __call__(self, x: mx.array) -> mx.array:
+        if self.space_stride == 2:
+            x = _reflect_pad_axis(x, 0, 1, 2)
+            x = _reflect_pad_axis(x, 0, 1, 3)
+        return self.conv(x)
+
+
+class EncoderLevel(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        channels: int,
+        *,
+        space_down: int,
+        time_down: int,
+        config: VideoVAEConfig,
+    ):
+        super().__init__()
+        self.block = [
+            EncoderResnetBlock(
+                in_channels if index == 0 else channels,
+                channels,
+                config,
+            )
+            for index in range(config.encoder_num_res_blocks)
+        ]
+        self.downsample = (
+            EncoderDownsample(
+                channels,
+                time_stride=time_down,
+                space_stride=space_down,
+            )
+            if space_down * time_down > 1
+            else None
+        )
+
+    def __call__(self, x: mx.array) -> mx.array:
+        for block in self.block:
+            x = block(x)
+        if self.downsample is not None:
+            x = self.downsample(x)
+        return x
+
+
+class VideoEncoder(nn.Module):
+    def __init__(self, config: VideoVAEConfig):
+        super().__init__()
+        multipliers = config.encoder_channel_multipliers
+        if not (
+            len(multipliers)
+            == len(config.encoder_space_down)
+            == len(config.encoder_time_down)
+        ):
+            raise ValueError("encoder level configuration lengths differ")
+        channels = tuple(config.encoder_base_channels * value for value in multipliers)
+        inputs = (channels[0],) + channels[:-1]
+        self.conv_in = CausalConv3d(
+            config.in_channels,
+            channels[0],
+            3,
+            padding=1,
+        )
+        self.down = [
+            EncoderLevel(
+                inputs[index],
+                channels[index],
+                space_down=config.encoder_space_down[index],
+                time_down=config.encoder_time_down[index],
+                config=config,
+            )
+            for index in range(len(channels))
+        ]
+        self.norm_out = TemporalIsolatedGroupNorm(
+            channels[-1], config.encoder_norm_groups, config.encoder_norm_eps
+        )
+        self.conv_out = CausalConv3d(
+            channels[-1],
+            config.latent_channels * 2,
+            3,
+            padding=1,
+        )
+
+    def __call__(self, x: mx.array) -> mx.array:
+        x = self.conv_in(x)
+        for level in self.down:
+            x = level(x)
+            mx.eval(x)
+        return self.conv_out(nn.silu(self.norm_out(x)))
+
+
+class VideoVAEEncoder(nn.Module):
+    """Encode RGB `[0,1]` images or videos to normalized posterior means."""
+
+    def __init__(self, config: VideoVAEConfig | None = None):
+        super().__init__()
+        self.config = config or VideoVAEConfig()
+        cfg = self.config
+        self.latents_mean = mx.zeros((cfg.latent_channels,), dtype=mx.float32)
+        self.latents_std = mx.ones((cfg.latent_channels,), dtype=mx.float32)
+        self.encoder = VideoEncoder(cfg)
+        self.quant_conv = nn.Conv3d(
+            cfg.latent_channels * 2,
+            cfg.latent_channels * 2,
+            1,
+        )
+
+    def _encode_tile(self, pixels: mx.array) -> mx.array:
+        moments = self.quant_conv(self.encoder(pixels))
+        mx.eval(moments)
+        return moments
+
+    def _encode_spatial(self, pixels: mx.array) -> mx.array:
+        cfg = self.config
+        y_plan = split_tiles(
+            pixels.shape[2],
+            tile_size=cfg.tile_size,
+            min_overlap=cfg.tile_overlap,
+            spatial_ratio=math.prod(cfg.encoder_space_down),
+        )
+        x_plan = split_tiles(
+            pixels.shape[3],
+            tile_size=cfg.tile_size,
+            min_overlap=cfg.tile_overlap,
+            spatial_ratio=math.prod(cfg.encoder_space_down),
+        )
+        rows = []
+        for y_start in y_plan.starts:
+            row = []
+            for x_start in x_plan.starts:
+                tile = pixels[
+                    :,
+                    :,
+                    y_start : y_start + y_plan.length,
+                    x_start : x_start + x_plan.length,
+                ]
+                row.append(self._encode_tile(tile))
+            rows.append(row)
+
+        y_overlaps = tuple(
+            value // math.prod(cfg.encoder_space_down) for value in y_plan.overlaps
+        )
+        x_overlaps = tuple(
+            value // math.prod(cfg.encoder_space_down) for value in x_plan.overlaps
+        )
+        result_rows = []
+        for row_index, row in enumerate(rows):
+            result_row = []
+            for column_index, tile in enumerate(row):
+                if row_index > 0:
+                    tile = _blend(
+                        rows[row_index - 1][column_index],
+                        tile,
+                        y_overlaps[row_index - 1],
+                        2,
+                    )
+                if column_index > 0:
+                    tile = _blend(
+                        row[column_index - 1],
+                        tile,
+                        x_overlaps[column_index - 1],
+                        3,
+                    )
+                if row_index < len(rows) - 1:
+                    tile = tile[:, :, : -y_overlaps[row_index]]
+                if column_index < len(row) - 1:
+                    tile = tile[:, :, :, : -x_overlaps[column_index]]
+                result_row.append(tile)
+            result_rows.append(mx.concatenate(result_row, axis=3))
+        return mx.concatenate(result_rows, axis=2)
+
+    def __call__(self, pixels: mx.array) -> mx.array:
+        cfg = self.config
+        if pixels.ndim == 4:
+            pixels = pixels[:, :, None]
+        if pixels.ndim != 5 or pixels.shape[1] != cfg.in_channels:
+            raise ValueError(
+                f"expected [B,{cfg.in_channels},H,W] or [B,{cfg.in_channels},T,H,W], "
+                f"got {pixels.shape}"
+            )
+        spatial_ratio = math.prod(cfg.encoder_space_down)
+        if pixels.shape[-2] % spatial_ratio or pixels.shape[-1] % spatial_ratio:
+            raise ValueError(f"pixel axes must be multiples of {spatial_ratio}")
+
+        pixel_mean = mx.array(IMAGENET_MEAN, dtype=mx.float32).reshape(
+            1, 1, 1, 1, 3
+        )
+        pixel_std = mx.array(IMAGENET_STD, dtype=mx.float32).reshape(
+            1, 1, 1, 1, 3
+        )
+        hidden = mx.transpose(pixels.astype(mx.float32), (0, 2, 3, 4, 1))
+        hidden = ((hidden - pixel_mean) / pixel_std).astype(self.encoder.conv_in.weight.dtype)
+        moments = self._encode_spatial(hidden)
+        mean, _ = mx.split(moments.astype(mx.float32), 2, axis=-1)
+        mean = mx.transpose(mean, (0, 4, 1, 2, 3))
+        latent_mean = self.latents_mean.reshape(1, -1, 1, 1, 1)
+        latent_std = self.latents_std.reshape(1, -1, 1, 1, 1)
+        return (mean - latent_mean) / latent_std
 
 
 class VideoVAE(nn.Module):

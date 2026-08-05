@@ -1,4 +1,4 @@
-"""MLX BigVGAN decoder for the MiniMax-H3 audio VAE.
+"""MLX waveform encoder and BigVGAN decoder for the MiniMax-H3 audio VAE.
 
 The diffusion latent is stereo, but the released decoder is mono: left and
 right channels fold into the batch axis and are decoded independently. The
@@ -22,6 +22,9 @@ import mlx.nn as nn
 class AudioVAEConfig:
     latent_channels: int = 32
     latent_dim: int = 2048
+    encoder_dim: int = 64
+    downsample_rates: tuple[int, ...] = (2, 4, 4, 5, 5)
+    encoder_attention_heads: int = 8
     decoder_dim: int = 1024
     upsample_rates: tuple[int, ...] = (5, 5, 2, 2, 2, 2, 2)
     upsample_kernels: tuple[int, ...] = (9, 9, 4, 4, 4, 4, 4)
@@ -36,6 +39,10 @@ class AudioVAEConfig:
     @property
     def hop_length(self) -> int:
         return math.prod(self.upsample_rates)
+
+    @property
+    def encoder_hop_length(self) -> int:
+        return math.prod(self.downsample_rates)
 
 
 def _replicate_pad(x: mx.array, left: int, right: int) -> mx.array:
@@ -58,6 +65,164 @@ class SnakeBeta(nn.Module):
         alpha = mx.exp(self.alpha).reshape(1, 1, -1)
         beta = mx.exp(self.beta).reshape(1, 1, -1)
         return x + mx.sin(alpha * x) ** 2 / (beta + 1e-9)
+
+
+class Snake1d(nn.Module):
+    def __init__(self, channels: int):
+        super().__init__()
+        self.alpha = mx.ones((1, channels, 1), dtype=mx.float32)
+
+    def __call__(self, x: mx.array) -> mx.array:
+        alpha = mx.transpose(self.alpha, (0, 2, 1)).astype(x.dtype)
+        return x + mx.sin(alpha * x) ** 2 / (alpha + 1e-9)
+
+
+class EncoderResidualUnit(nn.Module):
+    def __init__(self, channels: int, dilation: int):
+        super().__init__()
+        self.block = [
+            Snake1d(channels),
+            nn.Conv1d(
+                channels,
+                channels,
+                7,
+                padding=3 * dilation,
+                dilation=dilation,
+            ),
+            Snake1d(channels),
+            nn.Conv1d(channels, channels, 1),
+        ]
+
+    def __call__(self, x: mx.array) -> mx.array:
+        residual = x
+        for layer in self.block:
+            x = layer(x)
+        crop = (residual.shape[1] - x.shape[1]) // 2
+        if crop > 0:
+            residual = residual[:, crop:-crop]
+        return x + residual
+
+
+class EncoderBlock(nn.Module):
+    def __init__(self, channels: int, stride: int):
+        super().__init__()
+        inputs = channels // 2
+        self.block = [
+            EncoderResidualUnit(inputs, 1),
+            EncoderResidualUnit(inputs, 3),
+            EncoderResidualUnit(inputs, 9),
+            Snake1d(inputs),
+            nn.Conv1d(
+                inputs,
+                channels,
+                2 * stride,
+                stride=stride,
+                padding=math.ceil(stride / 2),
+            ),
+        ]
+
+    def __call__(self, x: mx.array) -> mx.array:
+        for layer in self.block:
+            x = layer(x)
+        return x
+
+
+class AudioEncoder(nn.Module):
+    def __init__(self, config: AudioVAEConfig):
+        super().__init__()
+        channels = config.encoder_dim
+        block: list[nn.Module] = [nn.Conv1d(1, channels, 7, padding=3)]
+        for stride in config.downsample_rates:
+            channels *= 2
+            block.append(EncoderBlock(channels, stride))
+        block.extend(
+            [
+                Snake1d(channels),
+                nn.Conv1d(channels, config.latent_dim, 3, padding=1),
+            ]
+        )
+        self.block = block
+
+    def __call__(self, x: mx.array) -> mx.array:
+        for layer in self.block:
+            x = layer(x)
+            mx.eval(x)
+        return x
+
+
+class GeGluMLP(nn.Module):
+    def __init__(self, channels: int):
+        super().__init__()
+        self.norm = nn.LayerNorm(channels, eps=1e-5)
+        self.w0 = nn.Linear(channels, channels * 2)
+        self.w1 = nn.Linear(channels, channels * 2)
+        self.w2 = nn.Linear(channels * 2, channels)
+
+    def __call__(self, x: mx.array) -> mx.array:
+        x = self.norm(x)
+        return self.w2(nn.gelu_approx(self.w0(x)) * self.w1(x))
+
+
+class CausalAttentionProjection(nn.Module):
+    def __init__(self, in_dim: int, out_dim: int, heads: int):
+        super().__init__()
+        if in_dim % heads or in_dim // heads % out_dim:
+            raise ValueError("audio attention dimensions do not divide evenly")
+        self.heads = heads
+        self.head_dim = in_dim // heads
+        self.out_dim = out_dim
+        self.scale = self.head_dim**-0.5
+        self.qkv = nn.Linear(in_dim, in_dim * 3, bias=False)
+        self.q_bias = mx.zeros((in_dim,), dtype=mx.float32)
+        self.v_bias = mx.zeros((in_dim,), dtype=mx.float32)
+        self.zero_k_bias = mx.zeros((in_dim,), dtype=mx.float32)
+        self.proj = nn.Linear(out_dim, out_dim)
+
+    def __call__(self, x: mx.array) -> mx.array:
+        batch, length, channels = x.shape
+        bias = mx.concatenate([self.q_bias, self.zero_k_bias, self.v_bias])
+        qkv = self.qkv(x) + bias.astype(x.dtype)
+        q, k, v = mx.split(
+            qkv.reshape(batch, length, 3, self.heads, self.head_dim),
+            3,
+            axis=2,
+        )
+        q, k, v = (
+            mx.transpose(value.squeeze(2), (0, 2, 1, 3))
+            for value in (q, k, v)
+        )
+        attended = mx.fast.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            scale=self.scale,
+            mask="causal" if length > 1 else None,
+        )
+        attended = mx.mean(attended, axis=1)
+        pool = self.head_dim // self.out_dim
+        attended = mx.mean(
+            attended.reshape(batch, length, self.out_dim, pool), axis=-1
+        )
+        return self.proj(attended)
+
+
+class AttnProjection(nn.Module):
+    def __init__(self, config: AudioVAEConfig):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(config.latent_dim, eps=1e-5)
+        self.attn = CausalAttentionProjection(
+            config.latent_dim,
+            config.latent_channels,
+            config.encoder_attention_heads,
+        )
+        self.proj = nn.Linear(config.latent_dim, config.latent_channels)
+        self.norm3 = nn.LayerNorm(config.latent_dim, eps=1e-5)
+        self.norm2 = nn.LayerNorm(config.latent_channels, eps=1e-5)
+        self.mlp = GeGluMLP(config.latent_channels)
+
+    def __call__(self, x: mx.array) -> mx.array:
+        x = self.proj(self.norm3(x)) + self.attn(self.norm1(x))
+        return x + self.mlp(self.norm2(x))
 
 
 class UpSample1d(nn.Module):
@@ -203,6 +368,46 @@ class BigVGANDecoder(nn.Module):
             mx.eval(x)
         x = self.conv_post(self.activation_post(x))
         return mx.clip(x, -1.0, 1.0)
+
+
+class AudioVAEEncoder(nn.Module):
+    """Encode 32 kHz stereo waveforms to normalized posterior means."""
+
+    def __init__(self, config: AudioVAEConfig | None = None):
+        super().__init__()
+        self.config = config or AudioVAEConfig()
+        cfg = self.config
+        if cfg.encoder_hop_length != cfg.hop_length:
+            raise ValueError("audio encoder and decoder hop lengths differ")
+        self.latents_mean = mx.zeros((cfg.latent_channels,), dtype=mx.float32)
+        self.latents_std = mx.ones((cfg.latent_channels,), dtype=mx.float32)
+        self.encoder = AudioEncoder(cfg)
+        self.pre_block = AttnProjection(cfg)
+        self.mean_proj = nn.Conv1d(cfg.latent_channels, cfg.latent_channels, 1)
+
+    def __call__(self, waveform: mx.array) -> mx.array:
+        """Encode `[B,2,L]` waveforms to `[B,32,2,ceil(L/800)]`."""
+        cfg = self.config
+        if waveform.ndim != 3 or waveform.shape[1] != 2:
+            raise ValueError(f"expected [B,2,L] waveform, got {waveform.shape}")
+        batch, stereo, length = waveform.shape
+        right_pad = math.ceil(length / cfg.encoder_hop_length) * cfg.encoder_hop_length
+        right_pad -= length
+        if right_pad:
+            waveform = mx.pad(waveform, ((0, 0), (0, 0), (0, right_pad)))
+        hidden = mx.transpose(waveform, (0, 2, 1)).reshape(
+            batch * stereo, waveform.shape[-1], 1
+        )
+        hidden = self.encoder(hidden.astype(self.encoder.block[0].weight.dtype))
+        hidden = self.pre_block(hidden)
+        latent = self.mean_proj(hidden)
+        latent = (
+            latent.astype(mx.float32) - self.latents_mean.reshape(1, 1, -1)
+        ) / self.latents_std.reshape(1, 1, -1)
+        return mx.transpose(
+            latent.reshape(batch, stereo, latent.shape[1], cfg.latent_channels),
+            (0, 3, 1, 2),
+        )
 
 
 class AudioVAE(nn.Module):

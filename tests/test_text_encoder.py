@@ -51,6 +51,51 @@ def test_invalid_geometry_and_empty_sequence_fail_at_the_boundary():
         model(mx.array([[]], dtype=mx.int32))
 
 
+def test_ref2va_presentation_preserves_cross_modality_request_order():
+    labels = {
+        "<Audio 1>: ": [11],
+        "<Picture 1>: ": [12],
+        "<Audio 2>: ": [13],
+        "<Video 1>: ": [14],
+        "<0.0 seconds>": [15],
+        "<Audio 3>: ": [16],
+    }
+
+    class FakeTokenizer:
+        def encode(self, value):
+            return labels[value]
+
+    class FakeEncoder:
+        _video_entries = text_encoder.MultimodalTextEncoder._video_entries
+
+        def visual(self, pixels):
+            return tuple(pixels.shape)
+
+        def _encode_vision_entries(
+            self, tokenizer, prompt, entries, *, trailing_tokens=()
+        ):
+            assert prompt == "prompt"
+            return entries, trailing_tokens
+
+    references = (
+        text_encoder.ReferencePresentation("audio", has_audio=True),
+        text_encoder.ReferencePresentation(
+            "image", mx.zeros((1, 3, 32, 32))
+        ),
+        text_encoder.ReferencePresentation(
+            "video", mx.zeros((1, 3, 5, 32, 32)), has_audio=True
+        ),
+        text_encoder.ReferencePresentation("audio", has_audio=True),
+    )
+    entries, trailing = text_encoder.MultimodalTextEncoder.encode_ref_references(
+        FakeEncoder(), FakeTokenizer(), "prompt", references
+    )
+
+    assert entries[0][0] == (11, 12)
+    assert entries[1][0] == (13, 14, 15)
+    assert trailing == (16,)
+
+
 @pytest.mark.checkpoint
 def test_checkpoint_text_subtree_is_exactly_the_truncated_decoder():
     path = (

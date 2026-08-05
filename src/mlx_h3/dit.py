@@ -40,6 +40,9 @@ SEG_TAG = {
 ADALN_EXPAND = 6
 ADALN_MODALITIES = 3
 
+BlockModulation = tuple[mx.array, mx.array, mx.array, mx.array, mx.array, mx.array]
+FinalModulation = tuple[mx.array, mx.array]
+
 
 class TimeEmbedder(nn.Module):
     """Sinusoidal timestep embedding. fp32 throughout, cosine before sine."""
@@ -239,12 +242,18 @@ class DiTBlock(nn.Module):
     def __call__(
         self,
         x: mx.array,
-        t_emb: mx.array,
+        t_emb: mx.array | None,
         runs: Runs,
         cos: mx.array | None = None,
         sin: mx.array | None = None,
+        *,
+        modulation: BlockModulation | None = None,
     ) -> mx.array:
-        shift_a, scale_a, gate_a, shift_m, scale_m, gate_m = self.adaln_proj(t_emb)
+        if modulation is None:
+            if self.adaln_proj is None or t_emb is None:
+                raise RuntimeError("AdaLN weights or precomputed modulation are required")
+            modulation = tuple(self.adaln_proj(t_emb))
+        shift_a, scale_a, gate_a, shift_m, scale_m, gate_m = modulation
         h = modulate(x, self.norm1.weight, self.eps, shift_a, scale_a, runs)
         x = gate(x, gate_a, self.attn(h, cos, sin), runs)
         h = modulate(x, self.norm2.weight, self.eps, shift_m, scale_m, runs)
@@ -275,11 +284,17 @@ class FinalLayer(nn.Module):
     def __call__(
         self,
         x: mx.array,
-        t_emb: mx.array,
+        t_emb: mx.array | None,
         video_seg: tuple[int, int, int],
         audio_seg: tuple[int, int, int],
+        *,
+        modulation: FinalModulation | None = None,
     ) -> tuple[mx.array, mx.array]:
-        shift, scale = self.adaln_proj(t_emb)
+        if modulation is None:
+            if self.adaln_proj is None or t_emb is None:
+                raise RuntimeError("AdaLN weights or precomputed modulation are required")
+            modulation = tuple(self.adaln_proj(t_emb))
+        shift, scale = modulation
 
         def head(seg, out):
             a, b, row = seg

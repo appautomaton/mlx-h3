@@ -68,8 +68,11 @@ def test_res_multistep_uses_second_order_updates_between_euler_endpoints():
         (1.0, 0.75, 0.25, 0.0), (1.0, 0.75, 0.25, 0.0)
     )
 
-    def sigma_velocity(video, audio, text, packed, *, sigma_video, sigma_audio):
+    def sigma_velocity(
+        video, audio, text, packed, *, sigma_video, sigma_audio, step_index
+    ):
         del text, packed
+        assert step_index in (0, 1, 2)
         return mx.full_like(video, sigma_video), mx.full_like(audio, sigma_audio)
 
     video, audio = sampler.denoise(
@@ -90,8 +93,10 @@ def test_res_multistep_uses_second_order_updates_between_euler_endpoints():
 def test_audio_velocity_is_mapped_onto_the_video_res_grid():
     sigmas = sampler.schedule(2, video_shift=2.0, audio_shift=1.0)
 
-    def constant_model(video, audio, text, packed, *, sigma_video, sigma_audio):
-        del text, packed, sigma_video, sigma_audio
+    def constant_model(
+        video, audio, text, packed, *, sigma_video, sigma_audio, step_index
+    ):
+        del text, packed, sigma_video, sigma_audio, step_index
         return mx.ones_like(video), mx.ones_like(audio)
 
     video, audio = sampler.denoise(
@@ -123,9 +128,11 @@ def test_denoise_passes_paired_sigmas_and_checks_each_step():
         def check(self, note):
             self.notes.append(note)
 
-    def constant_model(video, audio, text, packed, *, sigma_video, sigma_audio):
+    def constant_model(
+        video, audio, text, packed, *, sigma_video, sigma_audio, step_index
+    ):
         del text, packed
-        calls.append((sigma_video, sigma_audio))
+        calls.append((step_index, sigma_video, sigma_audio))
         return mx.ones_like(video), -mx.ones_like(audio)
 
     guard = FakeGuard()
@@ -140,7 +147,12 @@ def test_denoise_passes_paired_sigmas_and_checks_each_step():
         on_step=lambda *args: progress.append(args),
     )
 
-    assert calls == list(zip(sigmas.video[:-1], sigmas.audio[:-1]))
+    assert calls == [
+        (index, sigma_video, sigma_audio)
+        for index, (sigma_video, sigma_audio) in enumerate(
+            zip(sigmas.video[:-1], sigmas.audio[:-1])
+        )
+    ]
     assert guard.notes == ["step 1/3", "step 2/3", "step 3/3"]
     assert progress == [
         (1, 3, sigmas.video[0], sigmas.audio[0]),

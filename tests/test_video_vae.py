@@ -1,4 +1,4 @@
-"""Structural tests for the MiniMax-H3 visual VAE decoder.
+"""Structural tests for the MiniMax-H3 visual VAE encoder and decoder.
 
 VALIDATION TIER. Temporal and tile arithmetic is independently testable and
 agrees with the published geometry. Decoder tensor values have no executed fixture;
@@ -103,6 +103,26 @@ def test_tiny_vae_decodes_the_shortest_temporal_shape():
     assert mx.isfinite(output).all().item()
     assert mx.min(output).item() >= 0.0
     assert mx.max(output).item() <= 1.0
+
+
+def test_tiny_encoder_returns_a_normalized_single_frame_mean():
+    config = video_vae.VideoVAEConfig(
+        latent_channels=4,
+        encoder_base_channels=4,
+        encoder_channel_multipliers=(1, 2),
+        encoder_num_res_blocks=1,
+        encoder_space_down=(2, 2),
+        encoder_time_down=(1, 2),
+        encoder_norm_groups=1,
+        tile_size=32,
+        tile_overlap=8,
+    )
+    encoder = video_vae.VideoVAEEncoder(config)
+    pixels = mx.random.uniform(shape=(1, 3, 8, 12))
+    latent = encoder(pixels)
+    mx.eval(latent)
+    assert latent.shape == (1, 4, 1, 2, 3)
+    assert mx.isfinite(latent).all().item()
 
 
 def test_decoder_checkpoint_names_are_fully_accounted_for():

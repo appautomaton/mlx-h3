@@ -16,10 +16,10 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_flatten
 
-from .audio_vae import AudioVAE, AudioVAEConfig
-from .model import H3Config, MiniMaxH3
-from .text_encoder import TextEncoder, TextEncoderConfig
-from .video_vae import VideoVAE, VideoVAEConfig
+from .audio_vae import AudioVAE, AudioVAEConfig, AudioVAEEncoder
+from .model import H3Config, MiniMaxH3, Plan
+from .text_encoder import MultimodalTextEncoder, TextEncoder, TextEncoderConfig
+from .video_vae import VideoVAE, VideoVAEConfig, VideoVAEEncoder
 
 
 def read_header(path: str | Path) -> tuple[dict, dict]:
@@ -57,7 +57,13 @@ def check(model: nn.Module, header: dict) -> tuple[set[str], set[str]]:
     return wanted - stored, stored - wanted
 
 
-def load_dit(path: str | Path, config: H3Config | None = None) -> MiniMaxH3:
+def load_dit(
+    path: str | Path,
+    config: H3Config | None = None,
+    *,
+    plans: tuple[Plan, ...] | None = None,
+    modulation_dtype: mx.Dtype | None = None,
+) -> MiniMaxH3:
     header, metadata = read_header(path)
     model = prepare(MiniMaxH3(config), header, metadata)
     missing, unexpected = check(model, header)
@@ -68,6 +74,10 @@ def load_dit(path: str | Path, config: H3Config | None = None) -> MiniMaxH3:
             f"{len(unexpected)} unexpected (e.g. {sorted(unexpected)[:3]})"
         )
     model.load_weights(str(path))
+    if plans is not None:
+        if modulation_dtype is None:
+            raise ValueError("modulation_dtype is required with step plans")
+        model.precompute_adaln(plans, dtype=modulation_dtype)
     # Materialize now rather than on first use: mx.load is lazy, and letting the
     # weights fault in mid-step is exactly the paging this project must avoid.
     mx.eval(model.parameters())
@@ -94,6 +104,35 @@ def load_text_encoder(
     model.load_weights(selected)
     del checkpoint, selected
     # Materialize before inference so paging cannot be hidden inside layer 0.
+    mx.eval(model.parameters())
+    return model
+
+
+def load_multimodal_text_encoder(
+    path: str | Path,
+    config: TextEncoderConfig | None = None,
+) -> MultimodalTextEncoder:
+    """Load the text decoder and Qwen3-VL tower for image conditioning."""
+    header, metadata = read_header(path)
+    model = prepare(MultimodalTextEncoder(config), header, metadata)
+    missing, unexpected = check(model, header)
+    if missing or unexpected:
+        raise ValueError(
+            "multimodal text checkpoint does not match the model tree: "
+            f"{len(missing)} missing (e.g. {sorted(missing)[:3]}), "
+            f"{len(unexpected)} unexpected (e.g. {sorted(unexpected)[:3]})"
+        )
+
+    checkpoint = mx.load(str(path))
+    selected = []
+    for key in sorted(header):
+        value = checkpoint[key]
+        if key == "visual.patch_embed.proj.weight":
+            # Torch Conv3d [O,C,T,H,W] -> the equivalent flattened Linear.
+            value = value.reshape(value.shape[0], -1)
+        selected.append((key, value))
+    model.load_weights(selected)
+    del checkpoint, selected
     mx.eval(model.parameters())
     return model
 
@@ -139,6 +178,43 @@ def load_video_vae(
     return model
 
 
+def load_video_vae_encoder(
+    path: str | Path, config: VideoVAEConfig | None = None
+) -> VideoVAEEncoder:
+    """Load only the causal CNN encoder subset from the dense visual VAE."""
+    header, _ = read_header(path)
+    model = VideoVAEEncoder(config)
+    wanted = {key for key, _ in tree_flatten(model.parameters())}
+    stored = set(header)
+    missing = wanted - stored
+    invalid = {
+        key
+        for key in stored - wanted
+        if not key.startswith(("decoder.", "post_quant_conv."))
+    }
+    if missing or invalid:
+        raise ValueError(
+            "video VAE checkpoint does not match the encoder tree: "
+            f"{len(missing)} missing (e.g. {sorted(missing)[:3]}), "
+            f"{len(invalid)} unexpected (e.g. {sorted(invalid)[:3]})"
+        )
+
+    checkpoint = mx.load(str(path))
+    selected = []
+    for key in sorted(wanted):
+        value = checkpoint[key]
+        if key in ("latents_mean", "latents_std"):
+            value = value.astype(mx.float32)
+        elif key.endswith(".weight") and value.ndim == 5:
+            # Torch Conv3d [O,I,T,H,W] -> MLX [O,T,H,W,I].
+            value = mx.transpose(value, (0, 2, 3, 4, 1))
+        selected.append((key, value))
+    model.load_weights(selected)
+    del checkpoint, selected
+    mx.eval(model.parameters())
+    return model
+
+
 def load_audio_vae(
     path: str | Path, config: AudioVAEConfig | None = None
 ) -> AudioVAE:
@@ -172,6 +248,43 @@ def load_audio_vae(
             else:
                 # Torch Conv1d [O,I,K] -> MLX [O,K,I].
                 value = mx.transpose(value, (0, 2, 1))
+        selected.append((key, value))
+    model.load_weights(selected)
+    del checkpoint, selected
+    mx.eval(model.parameters())
+    return model
+
+
+def load_audio_vae_encoder(
+    path: str | Path, config: AudioVAEConfig | None = None
+) -> AudioVAEEncoder:
+    """Load only the deterministic audio posterior-mean encoder."""
+    header, _ = read_header(path)
+    model = AudioVAEEncoder(config)
+    wanted = {key for key, _ in tree_flatten(model.parameters())}
+    stored = set(header)
+    missing = wanted - stored
+    invalid = {
+        key
+        for key in stored - wanted
+        if not key.startswith(("decoder.", "dec_in_proj.", "logs_proj."))
+    }
+    if missing or invalid:
+        raise ValueError(
+            "audio VAE checkpoint does not match the encoder tree: "
+            f"{len(missing)} missing (e.g. {sorted(missing)[:3]}), "
+            f"{len(invalid)} unexpected (e.g. {sorted(invalid)[:3]})"
+        )
+
+    checkpoint = mx.load(str(path))
+    selected = []
+    for key in sorted(wanted):
+        value = checkpoint[key]
+        if key in ("latents_mean", "latents_std"):
+            value = value.astype(mx.float32)
+        elif key.endswith(".weight") and value.ndim == 3:
+            # Torch Conv1d [O,I,K] -> MLX [O,K,I].
+            value = mx.transpose(value, (0, 2, 1))
         selected.append((key, value))
     model.load_weights(selected)
     del checkpoint, selected

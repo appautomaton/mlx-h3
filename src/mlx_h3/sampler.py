@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import mlx.core as mx
@@ -181,6 +182,9 @@ def denoise(
     packed: PackedLayout,
     sigmas: SigmaSchedule,
     *,
+    cond_video_rows: mx.array | None = None,
+    cond_audio_rows: mx.array | None = None,
+    text_tags: Sequence[int] | None = None,
     guard: memory.Guard | None = None,
     on_step: Callable[[int, int, float, float], None] | None = None,
 ) -> tuple[mx.array, mx.array]:
@@ -195,6 +199,13 @@ def denoise(
     for index in range(sigmas.steps):
         sigma_video = sigmas.video[index]
         sigma_audio = sigmas.audio[index]
+        conditioning = {}
+        if cond_video_rows is not None:
+            conditioning["cond_video_rows"] = cond_video_rows
+        if cond_audio_rows is not None:
+            conditioning["cond_audio_rows"] = cond_audio_rows
+        if text_tags is not None:
+            conditioning["text_tags"] = text_tags
         video_velocity, audio_velocity = model(
             video,
             audio,
@@ -202,6 +213,8 @@ def denoise(
             packed,
             sigma_video=sigma_video,
             sigma_audio=sigma_audio,
+            step_index=index,
+            **conditioning,
         )
         video_denoised = _denoised(video, video_velocity, sigma_video)
         audio_slope = layout.time_shift_slope(

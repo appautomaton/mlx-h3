@@ -13,6 +13,7 @@ reference read statically. That is a weaker tier and is labelled as such.
 
 from __future__ import annotations
 
+import gc
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
@@ -102,6 +103,15 @@ class Plan:
     runs: dit.Runs
     video_seg: tuple[int, int, int]
     audio_seg: tuple[int, int, int]
+
+
+@dataclass(frozen=True)
+class AdalnSchedule:
+    """Materialized AdaLN values, stored block-major and addressed by step."""
+
+    t_values: tuple[tuple[float, ...], ...]
+    blocks: tuple[tuple[dit.BlockModulation, ...], ...]
+    final: tuple[dit.FinalModulation, ...]
 
 
 def plan(
@@ -210,6 +220,69 @@ class MiniMaxH3(nn.Module):
             cfg.audio_latents_dim,
             cfg.final_norm_eps,
         )
+        self._adaln_schedule: AdalnSchedule | None = None
+
+    @property
+    def has_precomputed_adaln(self) -> bool:
+        return self._adaln_schedule is not None
+
+    def precompute_adaln(
+        self,
+        plans: Sequence[Plan],
+        *,
+        dtype: mx.Dtype,
+    ) -> None:
+        """Materialize one AdaLN table per step, then release its projections."""
+        steps = tuple(plans)
+        if not steps:
+            raise ValueError("at least one step plan is required")
+        if self._adaln_schedule is not None:
+            raise RuntimeError("AdaLN has already been precomputed")
+        if self.time_embedder is None:
+            raise RuntimeError("timestep embedding weights have already been released")
+
+        embeddings = []
+        for step in steps:
+            value = self.time_embedder(
+                mx.array(step.t_vals, dtype=mx.float32)
+            ).astype(dtype)
+            mx.eval(value)
+            embeddings.append(value)
+        self.time_embedder = None
+        gc.collect()
+        mx.clear_cache()
+
+        block_tables = []
+        for block in self.blocks:
+            if block.adaln_proj is None:
+                raise RuntimeError("block AdaLN weights have already been released")
+            step_tables = []
+            for embedding in embeddings:
+                values = tuple(block.adaln_proj(embedding))
+                mx.eval(*values)
+                step_tables.append(values)
+            block.adaln_proj = None
+            block_tables.append(tuple(step_tables))
+            gc.collect()
+            mx.clear_cache()
+
+        if self.final_layer.adaln_proj is None:
+            raise RuntimeError("final AdaLN weights have already been released")
+        final_tables = []
+        for embedding in embeddings:
+            values = tuple(self.final_layer.adaln_proj(embedding))
+            mx.eval(*values)
+            final_tables.append(values)
+        self.final_layer.adaln_proj = None
+        embeddings = None
+        gc.collect()
+        mx.clear_cache()
+
+        self._adaln_schedule = AdalnSchedule(
+            t_values=tuple(step.t_vals for step in steps),
+            blocks=tuple(block_tables),
+            final=tuple(final_tables),
+        )
 
     def refine_text(self, text_states: mx.array) -> mx.array:
         """``[L, text_dim]`` Qwen states -> ``[L, hidden]``, or pass through."""
@@ -265,6 +338,7 @@ class MiniMaxH3(nn.Module):
         text_tags: Sequence[int] | None = None,
         visual_cond_noise_aug: float = layout.VISUAL_COND_TIMESTEP,
         audio_cond_noise_aug: float = layout.AUDIO_COND_TIMESTEP,
+        step_index: int | None = None,
         on_block: Callable[[int], None] | None = None,
     ) -> tuple[mx.array, mx.array]:
         """One denoising step. Returns raw data-ward video and audio velocities.
@@ -285,9 +359,19 @@ class MiniMaxH3(nn.Module):
             text_tags=text_tags,
         )
 
-        t_emb = self.time_embedder(mx.array(step.t_vals, dtype=mx.float32)).astype(
-            text_embed.dtype
-        )
+        schedule = self._adaln_schedule
+        if schedule is None:
+            if self.time_embedder is None:
+                raise RuntimeError("timestep embedding weights are unavailable")
+            t_emb = self.time_embedder(
+                mx.array(step.t_vals, dtype=mx.float32)
+            ).astype(text_embed.dtype)
+        else:
+            if step_index is None or not 0 <= step_index < len(schedule.t_values):
+                raise ValueError("a valid step_index is required for precomputed AdaLN")
+            if step.t_vals != schedule.t_values[step_index]:
+                raise ValueError("sampling step does not match the precomputed AdaLN schedule")
+            t_emb = None
         cos, sin = rope_tables(
             rope_angles(layout.to_mlx(packed.positions), self.rope.inv_freq),
             text_embed.dtype,
@@ -304,7 +388,15 @@ class MiniMaxH3(nn.Module):
 
         h = self.embed(packed, text_embed, video_rows, audio_rows)
         for i, block in enumerate(self.blocks):
-            h = block(h, t_emb, step.runs, cos, sin)
+            modulation = None if schedule is None else schedule.blocks[i][step_index]
+            h = block(
+                h,
+                t_emb,
+                step.runs,
+                cos,
+                sin,
+                modulation=modulation,
+            )
             # Force materialization per block: otherwise the lazy graph holds all
             # 50 blocks' intermediates alive at once, which at spec size is tens
             # of GiB that never needed to exist simultaneously.
@@ -312,7 +404,14 @@ class MiniMaxH3(nn.Module):
             if on_block is not None:
                 on_block(i)
 
-        v, a = self.final_layer(h, t_emb, step.video_seg, step.audio_seg)
+        final_modulation = None if schedule is None else schedule.final[step_index]
+        v, a = self.final_layer(
+            h,
+            t_emb,
+            step.video_seg,
+            step.audio_seg,
+            modulation=final_modulation,
+        )
 
         _, _, latent_t, latent_h, latent_w = video_latent.shape
         pt, ph, pw = cfg.patch_size

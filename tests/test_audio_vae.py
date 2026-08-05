@@ -63,6 +63,27 @@ def test_tiny_decoder_outputs_independent_stereo_waveforms():
     assert not mx.allclose(waveform[:, 0], waveform[:, 1])
 
 
+def test_tiny_encoder_returns_normalized_stereo_latents():
+    config = audio_vae.AudioVAEConfig(
+        latent_channels=4,
+        latent_dim=32,
+        encoder_dim=1,
+        downsample_rates=(2, 2),
+        encoder_attention_heads=1,
+        decoder_dim=16,
+        upsample_rates=(2, 2),
+        upsample_kernels=(4, 4),
+        resblock_kernels=(3,),
+        resblock_dilations=((1,),),
+        sample_rate=16,
+    )
+    vae = audio_vae.AudioVAEEncoder(config)
+    latent = vae(mx.random.normal((1, 2, 13)))
+    mx.eval(latent)
+    assert latent.shape == (1, 4, 2, 4)
+    assert mx.isfinite(latent).all().item()
+
+
 def test_checkpoint_has_the_released_decoder_geometry():
     checkpoint = (
         Path(__file__).resolve().parents[1]
@@ -77,6 +98,10 @@ def test_checkpoint_has_the_released_decoder_geometry():
     assert header["dec_in_proj.weight"]["shape"] == [2048, 32, 1]
     assert header["decoder.conv_pre.weight"]["shape"] == [1024, 2048, 7]
     assert header["decoder.conv_post.weight"]["shape"] == [1, 8, 7]
+    assert header["encoder.block.0.weight"]["shape"] == [64, 1, 7]
+    assert header["encoder.block.7.weight"]["shape"] == [2048, 2048, 3]
+    assert header["pre_block.attn.qkv.weight"]["shape"] == [6144, 2048]
+    assert header["mean_proj.weight"]["shape"] == [32, 32, 1]
     assert {
         int(key.split(".")[2])
         for key in header
