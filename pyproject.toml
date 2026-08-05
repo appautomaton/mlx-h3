@@ -31,7 +31,7 @@ dependencies = [
 mlx-h3 = "mlx_h3.cli:main"
 
 [project.urls]
-Homepage = "https://appautomaton.github.io/mlx-h3/"
+Homepage = "https://appautomaton.renocrypt.com/mlx-h3/"
 Repository = "https://github.com/appautomaton/mlx-h3"
 Issues = "https://github.com/appautomaton/mlx-h3/issues"
 # Deliberately NOT depended on:
