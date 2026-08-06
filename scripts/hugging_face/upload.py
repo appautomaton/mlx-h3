@@ -3,7 +3,10 @@
 
 python scripts/hugging_face/upload.py --dry-run     plan only
 python scripts/hugging_face/upload.py --card-only   refresh README.md
+python scripts/hugging_face/upload.py --only te     one artifact
 python scripts/hugging_face/upload.py               weights, then the card
+
+Uploads resume, so an interrupted run is restarted with the same command.
 """
 
 from __future__ import annotations
@@ -19,11 +22,13 @@ from pathlib import Path
 REPO_ID = "appautomaton/minimax-h3-base-8bit-mlx"
 SOURCE = Path("weights/mlx-8bit")
 CARD = Path("scripts/hugging_face/model_cards/appautomaton/minimax-h3-base-8bit-mlx.md")
-ARTIFACTS = (
-    "dit_fl2va_a8g32.safetensors",
-    "dit_ref2va_a8g32.safetensors",
-    "te_qwen3vl_a8g32.safetensors",
-)
+# Short name -> filename. Ordered smallest first, which is also the order to
+# upload them in: the cheapest artifact proves the path before the big ones.
+ARTIFACTS = {
+    "te": "te_qwen3vl_a8g32.safetensors",
+    "fl2va": "dit_fl2va_a8g32.safetensors",
+    "ref2va": "dit_ref2va_a8g32.safetensors",
+}
 
 
 def run(command: list[str], env: dict[str, str]) -> None:
@@ -36,6 +41,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--card-only", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--only",
+        choices=tuple(ARTIFACTS),
+        help="Upload a single artifact and skip the card.",
+    )
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[2]
@@ -44,16 +54,18 @@ def main() -> int:
     if not card.is_file():
         raise FileNotFoundError(f"missing model card: {card}")
 
-    missing = [name for name in ARTIFACTS if not (source / name).is_file()]
+    selected = [ARTIFACTS[args.only]] if args.only else list(ARTIFACTS.values())
+    missing = [name for name in selected if not (source / name).is_file()]
     if missing and not args.card_only:
         raise FileNotFoundError(f"missing under {source}: {', '.join(missing)}")
 
     if args.dry_run:
-        total = sum((source / name).stat().st_size for name in ARTIFACTS)
+        total = sum((source / name).stat().st_size for name in selected)
         print(f"repo: {REPO_ID}")
-        for name in ARTIFACTS:
+        for name in selected:
             print(f"  {name}  {(source / name).stat().st_size / 1024**3:.1f} GiB")
-        print(f"  README.md <- {CARD}")
+        if not args.only:
+            print(f"  README.md <- {CARD}")
         print(f"  total: {total / 1024**3:.1f} GiB")
         return 0
 
@@ -66,23 +78,28 @@ def main() -> int:
     env["HF_HUB_DISABLE_XET"] = "1"
 
     if not args.card_only:
-        # One worker: a single stream already saturates the uplink, so more of
-        # them buy nothing and only widen the window for a stall.
-        run(
-            [
-                hf,
-                "upload-large-folder",
-                "--repo-type",
-                "model",
-                "--num-workers",
-                "1",
-                "--include",
-                "*.safetensors",
-                REPO_ID,
-                str(source),
-            ],
-            env,
-        )
+        for name in selected:
+            # One worker: a single stream already saturates the uplink, so more
+            # of them buy nothing and only widen the window for a stall.
+            run(
+                [
+                    hf,
+                    "upload-large-folder",
+                    "--repo-type",
+                    "model",
+                    "--num-workers",
+                    "1",
+                    "--include",
+                    name,
+                    REPO_ID,
+                    str(source),
+                ],
+                env,
+            )
+
+    if args.only:
+        print(f"Done. https://huggingface.co/{REPO_ID}")
+        return 0
 
     run([hf, "upload", "--repo-type", "model", REPO_ID, str(card), "README.md"], env)
     print(f"Done. https://huggingface.co/{REPO_ID}")
