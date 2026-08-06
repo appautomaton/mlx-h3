@@ -59,19 +59,42 @@ FORBIDDEN_SUFFIXES = {
     ".webp",
 }
 
+# Field names from H3's structured briefs, in their assigned form. The text-only
+# brief carries the first three; a reference brief adds the rest. Each is split
+# across adjacent literals so the joined marker never appears in this file, which
+# is itself scanned. Do not join them.
+#
+# A brief written as free prose, naming no field, still passes. No content check
+# recognises that; the directory, suffix, and filename rules above are what keep
+# working input out.
 PRIVATE_PROMPT_MARKERS = {
     "integrated_multimodal_" "description:",
     "non_diegetic_" "music:",
     "overall_" "soundscape:",
+    "subject_" "definitions:",
+    "retention_" "analysis:",
+    "detailed_" "description:",
 }
 
 TEXT_SUFFIXES = {
     "",
+    ".cfg",
+    ".csv",
+    ".css",
+    ".html",
     ".ini",
+    ".js",
+    ".json",
+    ".jsonl",
     ".md",
     ".py",
+    ".rst",
+    ".sh",
+    ".svg",
     ".toml",
+    ".tsv",
     ".txt",
+    ".xml",
     ".yaml",
     ".yml",
 }
