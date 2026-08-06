@@ -13,7 +13,7 @@ import time
 
 import mlx.core as mx
 
-from mlx_h3 import layout, loading, memory, sampler
+from mlx_h3 import layout, loading, memory, model as h3_model, sampler
 
 SHAPES = {
     # 864x480, 56 frames -- the iteration config
@@ -29,7 +29,20 @@ def main() -> int:
     ap.add_argument("--text-len", type=int, default=512)
     ap.add_argument("--budget", type=int, default=memory.BUDGET_GIB)
     ap.add_argument("--dit", default="weights/mlx-8bit/dit_fl2va_a8g32.safetensors")
+    ap.add_argument("--turbo-lora")
+    ap.add_argument(
+        "--steps",
+        type=int,
+        default=None,
+        help="schedule steps (default: 20 base, 6 with Turbo LoRA)",
+    )
     args = ap.parse_args()
+    sampling = (
+        sampler.TURBO_PROFILE
+        if args.turbo_lora is not None
+        else sampler.BASE_PROFILE
+    )
+    steps = sampling.resolve_steps(args.steps)
 
     memory.configure(args.budget)
     print(memory.report("start        "))
@@ -52,8 +65,20 @@ def main() -> int:
     )
 
     guard = memory.Guard(f"one_step/{args.shape}", args.budget)
+    sigmas = sampler.schedule(steps)
+    plans = tuple(
+        h3_model.plan(packed, sigma_video, sigma_audio=sigma_audio)
+        for sigma_video, sigma_audio in zip(
+            sigmas.video[:-1], sigmas.audio[:-1], strict=True
+        )
+    )
     t0 = time.perf_counter()
-    dit = loading.load_dit(args.dit)
+    dit = loading.load_dit(
+        args.dit,
+        plans=plans,
+        modulation_dtype=mx.bfloat16,
+        adapter_path=args.turbo_lora,
+    )
     guard.check("after load")
     print(memory.report(f"loaded {time.perf_counter() - t0:5.1f}s  "))
 
@@ -73,7 +98,14 @@ def main() -> int:
     t0 = time.perf_counter()
     marks.append(t0)
     video_velocity, audio_velocity = dit(
-        video, audio, text, packed, sigma_video=0.5, on_block=on_block
+        video,
+        audio,
+        text,
+        packed,
+        sigma_video=sigmas.video[0],
+        sigma_audio=sigmas.audio[0],
+        step_index=0,
+        on_block=on_block,
     )
     mx.eval(video_velocity, audio_velocity)
     total = time.perf_counter() - t0
@@ -84,7 +116,7 @@ def main() -> int:
         f"  step {total:6.2f}s   block min {min(per_block) * 1e3:6.0f} ms "
         f"median {sorted(per_block)[len(per_block) // 2] * 1e3:6.0f} ms"
     )
-    model_evaluations = sampler.DEFAULT_STEPS
+    model_evaluations = steps
     print(f"  -> {model_evaluations} model evaluations would be {total * model_evaluations / 60:.1f} min")
     print(
         f"  velocity video {video_velocity.shape} {video_velocity.dtype}, "

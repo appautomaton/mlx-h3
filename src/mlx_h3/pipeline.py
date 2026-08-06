@@ -59,6 +59,14 @@ class ModelPaths:
     audio_vae: str | Path = (
         "weights/bf16/vae/minimax_h3_audio_vae_fp32.safetensors"
     )
+    turbo_lora: str | Path | None = None
+
+    @property
+    def sampling_profile(self) -> sampler.SamplingProfile:
+        """Sampling contract selected by the optional trajectory adapter."""
+        if self.turbo_lora is not None:
+            return sampler.TURBO_PROFILE
+        return sampler.BASE_PROFILE
 
     def validate(self, *, ref2va: bool) -> None:
         """Fail before model loading when a required local asset is absent."""
@@ -71,6 +79,8 @@ class ModelPaths:
             "Video VAE": self.video_vae,
             "Audio VAE": self.audio_vae,
         }
+        if self.turbo_lora is not None:
+            required["Turbo LoRA"] = self.turbo_lora
         missing = [
             f"{label}: {Path(path).expanduser()}"
             for label, path in required.items()
@@ -118,7 +128,7 @@ class GenerationConfig:
     height: int = 480
     frames: int = 56
     seed: int = 42
-    steps: int = sampler.DEFAULT_STEPS
+    steps: int | None = None
     max_prompt_tokens: int = 4096
     first_frame: str | Path | None = None
     last_frame: str | Path | None = None
@@ -144,8 +154,8 @@ class GenerationConfig:
             raise ValueError("aligned frame count exceeds the released 15 second limit")
         if self.seed < 0:
             raise ValueError("seed must be non-negative")
-        if self.steps < 1 or self.steps > 1000:
-            raise ValueError("steps must be in [1, 1000]")
+        if self.steps is not None:
+            sampler.BASE_PROFILE.resolve_steps(self.steps)
         if self.max_prompt_tokens < 1:
             raise ValueError("max_prompt_tokens must be positive")
         if not all(isinstance(reference, Reference) for reference in self.references):
@@ -254,6 +264,8 @@ def generate(
     """Run generation with exactly one resident model per phase."""
     ref2va = bool(config.references)
     paths.validate(ref2va=ref2va)
+    sampling = paths.sampling_profile
+    steps = sampling.resolve_steps(config.steps)
     dit_path = paths.ref_dit if ref2va else paths.dit
 
     tok = tokenizer.QwenTokenizer.from_file(paths.tokenizer)
@@ -508,7 +520,7 @@ def generate(
             axis=0,
         )
         mx.eval(cond_audio_rows)
-    sigmas = sampler.schedule(config.steps)
+    sigmas = sampler.schedule(steps)
     step_plans = tuple(
         h3_model.plan(
             packed,
@@ -524,7 +536,8 @@ def generate(
     def run_dit(model):
         refined_text = model.refine_text(text_states)
         mx.eval(refined_text)
-        return sampler.denoise(
+        denoise = sampler.denoiser(sampling)
+        return denoise(
             model,
             video_noise,
             audio_noise,
@@ -544,6 +557,7 @@ def generate(
             dit_path,
             plans=step_plans,
             modulation_dtype=text_states.dtype,
+            adapter_path=paths.turbo_lora,
         ),
         run_dit,
         guard,

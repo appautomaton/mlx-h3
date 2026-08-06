@@ -13,6 +13,34 @@ import pytest
 from mlx_h3 import sampler
 
 
+def test_step_policy_uses_mode_defaults_and_bounds_turbo():
+    assert sampler.BASE_PROFILE.resolve_steps(None) == 20
+    assert sampler.TURBO_PROFILE.resolve_steps(None) == 6
+    assert sampler.TURBO_PROFILE.resolve_steps(4) == 4
+    assert sampler.TURBO_PROFILE.resolve_steps(8) == 8
+
+    with pytest.raises(ValueError, match=r"\[4, 8\].*3"):
+        sampler.TURBO_PROFILE.resolve_steps(3)
+    with pytest.raises(ValueError, match=r"\[4, 8\].*9"):
+        sampler.TURBO_PROFILE.resolve_steps(9)
+
+
+def test_sampling_profiles_select_their_declared_solvers():
+    assert sampler.denoiser(sampler.BASE_PROFILE) is sampler.denoise
+    assert sampler.denoiser(sampler.TURBO_PROFILE) is sampler.denoise_euler
+
+
+def test_sampling_profile_rejects_an_invalid_default():
+    with pytest.raises(ValueError, match="min_steps <= default_steps"):
+        sampler.SamplingProfile(
+            label="invalid",
+            solver=sampler.Solver.EULER,
+            default_steps=3,
+            min_steps=4,
+            max_steps=8,
+        )
+
+
 def test_official_simple_schedule_has_20_model_evaluations():
     sigmas = sampler.schedule()
     assert len(sigmas.video) == sampler.DEFAULT_STEPS + 1
@@ -114,6 +142,36 @@ def test_audio_velocity_is_mapped_onto_the_video_res_grid():
     # would incorrectly produce 1 here.
     assert video.item() == pytest.approx(1.0, abs=1e-6)
     assert audio.item() == pytest.approx(17 / 12, abs=1e-6)
+
+
+def test_paired_euler_advances_audio_on_its_own_grid_without_slope_mapping():
+    sigmas = sampler.schedule(2, video_shift=2.0, audio_shift=1.0)
+    calls = []
+
+    def constant_model(
+        video, audio, text, packed, *, sigma_video, sigma_audio, step_index
+    ):
+        del text, packed
+        calls.append((step_index, sigma_video, sigma_audio))
+        return mx.ones_like(video), mx.ones_like(audio)
+
+    video, audio = sampler.denoise_euler(
+        constant_model,
+        mx.zeros((1,), dtype=mx.float32),
+        mx.zeros((1,), dtype=mx.float32),
+        mx.zeros((1, 1)),
+        object(),
+        sigmas,
+    )
+
+    assert video.item() == pytest.approx(1.0, abs=1e-6)
+    assert audio.item() == pytest.approx(1.0, abs=1e-6)
+    assert calls == [
+        (index, sigma_video, sigma_audio)
+        for index, (sigma_video, sigma_audio) in enumerate(
+            zip(sigmas.video[:-1], sigmas.audio[:-1], strict=True)
+        )
+    ]
 
 
 def test_denoise_passes_paired_sigmas_and_checks_each_step():

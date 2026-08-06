@@ -14,10 +14,15 @@ What is on disk, what inference loads, and the rules for producing the quantized
       dit_fl2va_a8g32.safetensors                            34.8 GiB
       dit_ref2va_a8g32.safetensors                           34.8 GiB
       te_qwen3vl_a8g32.safetensors                           27.7 GiB
+    weights/adapters/   optional runtime adapters
+      minimax-h3-turbo/minimax_h3_turbo_4step_ema_ckpt500.safetensors   744 MiB
 
 Inference loads one 8-bit DiT selected by the conditioning mode, the 8-bit text encoder, and the
 two **dense** VAE files. The bf16 DiT and text encoder exist only as requantization inputs and are
 never loaded at runtime.
+
+When requested, the BF16 Turbo LoRA is loaded only inside the selected DiT phase and is
+released with that DiT. It is never merged into either base checkpoint.
 
 To fetch the sources:
 
@@ -33,6 +38,19 @@ hf download Comfy-Org/MiniMax-H3 \
 
 The Comfy-Org text encoder is already truncated to layers 0–49 with no `lm_head`, which is exactly
 what H3 reads. That truncation is lossless — do not download the official 66.7 GB text encoder.
+
+Fetch the optional community adapter separately:
+
+```bash
+hf download larryvrh/MiniMax-H3-Turbo-Lora \
+  minimax_h3_turbo_4step_ema_ckpt500.safetensors \
+  --local-dir weights/adapters/minimax-h3-turbo
+```
+
+The reviewed checkpoint contains 518 BF16 tensors: A/B pairs for 259 DiT linears. Rank 16
+adapters cover 50 block AdaLN projections and final AdaLN; rank 64 adapters cover each block's
+attention and MLP projections plus the two token-refiner blocks. Patch projections, condition
+projection, time embedder, norms, and output heads are untouched.
 
 ## A pre-quantized build cannot be substituted
 
@@ -82,6 +100,9 @@ The selected quantized DiT and TE are **34.8 GiB and 27.7 GiB, never co-resident
 invariant `pipeline.run_phase` enforces: load one model, materialize its output, release it, assert
 the memory came back. Unstaged they would be 62.5 GiB of weights before a single activation.
 
+The Turbo adapter adds 779.8 MB on disk. About 159.6 MB belongs to AdaLN targets and is released
+after adapter-aware modulation precompute; about 620.2 MB remains with the DiT trunk.
+
 ## DiT tensor naming
 
 ```
@@ -105,6 +126,10 @@ About 39% of the parameters (13B of 33B) sit in AdaLN branches, whose output dep
 `(timestep, modality)`. Before denoising, the runtime builds the exact schedule for the request,
 materializes every block and final-layer modulation table, then releases the timestep embedder and
 AdaLN projections block by block. Real-checkpoint parity against the weight-based path is exact.
+
+If the Turbo adapter is present, its low-rank AdaLN branch is evaluated by the same projection
+call. The completed base-plus-adapter modulation is stored in the table, after which both the
+quantized base projection and its BF16 LoRA tensors are released.
 
 The checkpoint remains 34.8 GiB on disk, but active DiT residency falls from 34.756 GiB to about
 21.2 GiB before the first sampling step. Ten steps use about 0.172 GiB of tables. This optimization

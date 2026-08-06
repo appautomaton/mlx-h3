@@ -82,6 +82,21 @@ MiniMaxH3Transformer3DModel
    H3 reads the *unnormalized* hidden state after decoder layer 50, not the last one, and the
    lm_head is unused. The model has 64 layers — see `weights.md`.
 
+### Sampling paths
+
+The base-model quality baseline is 20 `simple` steps with `res_multistep`. It maps the raw
+audio velocity onto the video integration grid and uses second-order history between Euler
+endpoints.
+
+The optional community Turbo LoRA is a different, explicit trajectory: four to eight `simple`
+steps with first-order Euler throughout, defaulting to six. Video and audio still share one DiT
+call, but each latent advances directly on its own shifted sigma grid. The LoRA does not modify
+the text encoder or either VAE.
+
+The orchestrator selects an immutable sampling profile; the profile owns the default, valid step
+range, and solver. Adapter loading remains a separate DiT-phase concern. A future distilled
+trajectory therefore adds a profile and adapter mapping rather than duplicating the pipeline.
+
 ### Components
 
 | Component | Spec |
@@ -108,6 +123,11 @@ MiniMaxH3Transformer3DModel
 
 **Structurally identical; they differ only in input packing.** Everything else — text encoder,
 both VAEs, tokenizer, schedulers — is shared.
+
+The community Turbo adapter's 259 target modules exist with identical geometry in both DiTs,
+so one adapter file can attach after either checkpoint is selected. Upstream currently declares
+FL2VA support but not Ref2VA support; the latter remains an experimental runtime path despite
+passing local smoke validation.
 
 Ref2VA's `references` list is order-sensitive: order determines the `<Picture 1>` / `<Audio 1>` /
 `<Video 1>` labels in the prompt presentation and advances the shared audio/video rotary clock.
