@@ -4,7 +4,7 @@
 
 **Pure MLX MiniMax-H3 text-to-video-and-audio inference for Apple Silicon.**
 
-[![Pre-release](https://img.shields.io/badge/release-v0.0.1a2-F59E0B?style=flat-square)](https://github.com/appautomaton/mlx-h3/releases)
+[![Pre-release](https://img.shields.io/badge/release-v0.0.1a3-F59E0B?style=flat-square)](https://github.com/appautomaton/mlx-h3/releases)
 [![PyPI](https://img.shields.io/pypi/v/mlx-h3?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/mlx-h3/)
 [![Python](https://img.shields.io/badge/Python-3.13%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-native-000000?style=flat-square&logo=apple&logoColor=white)](https://support.apple.com/mac/)
@@ -20,7 +20,7 @@ stereo audio jointly, keeps model residency phase-scoped, and targets large-memo
 Apple silicon systems without using PyTorch at runtime.
 
 > [!IMPORTANT]
-> This project is pre-alpha. This package version is released as the `v0.0.1a2`
+> This project is pre-alpha. This package version is released as the `v0.0.1a3`
 > GitHub pre-release. Model files are not included in the repository or PyPI package.
 
 ## Why mlx-h3
@@ -72,7 +72,7 @@ uv sync
 Install the current PyPI pre-release:
 
 ```sh
-uv tool install --prerelease allow mlx-h3==0.0.1a2
+uv tool install --prerelease allow mlx-h3==0.0.1a3
 ```
 
 ## Local model layout
