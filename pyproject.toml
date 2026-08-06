@@ -1,6 +1,6 @@
 [project]
 name = "mlx-h3"
-version = "0.0.1a2"
+version = "0.0.1a3"
 description = "Pure MLX MiniMax-H3 text-to-video-and-audio inference for Apple Silicon."
 readme = "README.md"
 requires-python = ">=3.13"
