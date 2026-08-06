@@ -31,8 +31,8 @@ record project status, plans, or "we decided X" in `docs/`; that belongs in `.ag
   local requantization inputs; the Video and Audio VAEs remain dense runtime inputs.
 - The default active-memory budget is 70 GiB. Swap activity is a hard failure.
   Do not weaken, bypass, or suppress the memory guard to make a run pass.
-- Do not commit real generation prompts or generated examples, including in tests,
-  docs, fixtures, issue templates, or release notes.
+- Never commit local generation prompts, cases, or generated media, including in
+  tests, docs, fixtures, issue templates, and release notes.
 
 Run `python dev/check_public_tree.py` before exposing repository contents. The
 pre-commit hook applies the same policy to staged files.
