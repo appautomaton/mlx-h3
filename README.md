@@ -159,7 +159,8 @@ large files, hidden local state, symlinks, and structured private prompt payload
 pre-commit hook runs the same check against staged files.
 
 Reference notes live in [docs/](docs/): [architecture](docs/architecture.md) (what H3 is),
-[weights](docs/weights.md) (what is on disk), [porting](docs/porting.md) (validation and pitfalls).
+[weights](docs/weights.md) (what is on disk), [porting](docs/porting.md) (validation and pitfalls),
+[prompting](docs/prompting.md) (what to send the encoder).
 
 ## Project identity
 
