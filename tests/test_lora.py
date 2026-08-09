@@ -72,6 +72,17 @@ def test_header_rejects_unpaired_and_wrong_dtype_tensors():
         lora.targets(header, METADATA)
 
 
+def test_header_allows_missing_dtype_metadata_but_rejects_wrong_value():
+    header, _ = pair("proj", (2, 4), (3, 2))
+    metadata_without_dtype = {
+        key: value for key, value in METADATA.items() if key != "dtype"
+    }
+
+    assert len(lora.targets(header, metadata_without_dtype)) == 1
+    with pytest.raises(ValueError, match="metadata dtype"):
+        lora.targets(header, METADATA | {"dtype": "float16"})
+
+
 def test_adaln_lora_is_baked_into_precompute_then_released():
     cfg = model.H3Config(
         hidden_size=8,
@@ -125,12 +136,19 @@ def test_adaln_lora_is_baked_into_precompute_then_released():
 
 
 @pytest.mark.checkpoint
-def test_real_adapter_header_matches_both_quantized_dit_trees():
+@pytest.mark.parametrize(
+    "adapter_name",
+    (
+        "minimax_h3_turbo_4step_ema_ckpt850.safetensors",
+        "minimax_h3_turbo_v4_step600_ema.safetensors",
+    ),
+)
+def test_real_adapter_header_matches_both_quantized_dit_trees(adapter_name: str):
     root = Path(__file__).resolve().parents[1]
     adapter_path = (
         root
         / "weights/adapters/minimax-h3-turbo"
-        / "minimax_h3_turbo_4step_ema_ckpt500.safetensors"
+        / adapter_name
     )
     base_paths = (
         root / "weights/mlx-8bit/dit_fl2va_a8g32.safetensors",

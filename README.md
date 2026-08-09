@@ -87,7 +87,8 @@ weights/
 ├── mlx-8bit/dit_fl2va_a8g32.safetensors
 ├── mlx-8bit/dit_ref2va_a8g32.safetensors
 ├── adapters/minimax-h3-turbo/
-│   └── minimax_h3_turbo_4step_ema_ckpt500.safetensors
+│   ├── minimax_h3_turbo_v4_step600_ema.safetensors
+│   └── minimax_h3_turbo_4step_ema_ckpt850.safetensors
 └── bf16/vae/
     ├── minimax_h3_video_vae_fp16.safetensors
     └── minimax_h3_audio_vae_fp32.safetensors
@@ -97,15 +98,22 @@ Dense DiT and text-encoder weights may be retained locally for requantization, b
 inference never loads them. The dense Video VAE and Audio VAE checkpoints are runtime
 inputs.
 
-The optional community Turbo adapter stays BF16 and separate from both 8-bit DiT
-checkpoints. Download the EMA checkpoint validated by this runtime without moving or
-merging any existing weight:
+The optional community Turbo adapters stay BF16 and separate from both 8-bit DiT
+checkpoints. Download the two EMA checkpoints validated by this runtime from
+[larryvrh/MiniMax-H3-Turbo-Lora](https://huggingface.co/larryvrh/MiniMax-H3-Turbo-Lora)
+without moving or merging any existing weight:
 
 ```sh
 hf download larryvrh/MiniMax-H3-Turbo-Lora \
-  minimax_h3_turbo_4step_ema_ckpt500.safetensors \
+  minimax_h3_turbo_v4_step600_ema.safetensors \
+  minimax_h3_turbo_4step_ema_ckpt850.safetensors \
   --local-dir weights/adapters/minimax-h3-turbo
 ```
+
+Use `v4-step600 EMA` for most requests, preferably at six to eight sampling steps.
+The older `v1-850 EMA` is an optional fallback for heavy or fast motion when a request
+must stay at exactly four steps. Here `v4` names the training recipe and `step600`
+the training checkpoint; neither is the inference step count.
 
 ## Generate
 
@@ -147,16 +155,18 @@ DiT phase to first-order Euler with video and audio advancing on their own sigma
 
 ```sh
 uv run mlx-h3 "$MLX_H3_INPUT_TEXT" \
-  --turbo-lora weights/adapters/minimax-h3-turbo/minimax_h3_turbo_4step_ema_ckpt500.safetensors \
+  --turbo-lora weights/adapters/minimax-h3-turbo/minimax_h3_turbo_v4_step600_ema.safetensors \
+  --steps 6 \
   --output outputs/turbo-result.mp4
 ```
 
 Turbo mode defaults to six steps and accepts explicit values from four through eight;
-values outside that range fail before model loading. The adapter is a community early
-preview, not an official MiniMax release. Its module geometry matches both local DiTs;
-T2VA/FL2VA has the author-supported base path. Ref2VA is structurally compatible and has
-passed local smoke validation, but remains experimental because its author has not yet
-declared Ref2VA support.
+values outside that range fail before model loading. Both checkpoints use the same module
+geometry and inference path, so selecting one does not change per-step cost. The adapters
+are a community early preview, not an official MiniMax release. Their module geometry
+matches both local DiTs; T2VA/FL2VA has the author-supported base path. Ref2VA is
+structurally compatible and has passed local smoke validation, but remains experimental
+because its author has not yet declared Ref2VA support.
 
 Run `uv run mlx-h3 --help` for checkpoint path overrides and all generation options.
 

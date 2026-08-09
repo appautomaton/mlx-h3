@@ -58,7 +58,8 @@ def targets(header: Mapping[str, dict], metadata: Mapping[str, str]) -> tuple[Ta
     """Validate a standard MiniMax-H3 BF16 LoRA safetensors header."""
     if metadata.get("base_model") != "MiniMax-H3":
         raise ValueError("LoRA metadata base_model must be MiniMax-H3")
-    if metadata.get("dtype") != "bfloat16":
+    metadata_dtype = metadata.get("dtype")
+    if metadata_dtype is not None and metadata_dtype != "bfloat16":
         raise ValueError("LoRA metadata dtype must be bfloat16")
     if metadata.get("application") != "W_eff = W + lora_B @ lora_A":
         raise ValueError("unsupported LoRA application metadata")
