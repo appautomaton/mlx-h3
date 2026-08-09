@@ -45,6 +45,7 @@ Apple silicon systems without using PyTorch at runtime.
 | First/last-frame conditioning (FL2VA) | Working |
 | Ordered image/video/audio references (Ref2VA) | Working |
 | Reference-video soundtrack conditioning | Working |
+| Community Turbo LoRA with paired-schedule Euler | Working (opt-in) |
 | Context-IR and 2K regeneration | Not available locally |
 
 ## Requirements
@@ -85,6 +86,9 @@ weights/
 ├── mlx-8bit/te_qwen3vl_a8g32.safetensors
 ├── mlx-8bit/dit_fl2va_a8g32.safetensors
 ├── mlx-8bit/dit_ref2va_a8g32.safetensors
+├── adapters/minimax-h3-turbo/
+│   ├── minimax_h3_turbo_v4_step600_ema.safetensors
+│   └── minimax_h3_turbo_4step_ema_ckpt850.safetensors
 └── bf16/vae/
     ├── minimax_h3_video_vae_fp16.safetensors
     └── minimax_h3_audio_vae_fp32.safetensors
@@ -93,6 +97,23 @@ weights/
 Dense DiT and text-encoder weights may be retained locally for requantization, but
 inference never loads them. The dense Video VAE and Audio VAE checkpoints are runtime
 inputs.
+
+The optional community Turbo adapters stay BF16 and separate from both 8-bit DiT
+checkpoints. Download the two EMA checkpoints validated by this runtime from
+[larryvrh/MiniMax-H3-Turbo-Lora](https://huggingface.co/larryvrh/MiniMax-H3-Turbo-Lora)
+without moving or merging any existing weight:
+
+```sh
+hf download larryvrh/MiniMax-H3-Turbo-Lora \
+  minimax_h3_turbo_v4_step600_ema.safetensors \
+  minimax_h3_turbo_4step_ema_ckpt850.safetensors \
+  --local-dir weights/adapters/minimax-h3-turbo
+```
+
+Use `v4-step600 EMA` for most requests, preferably at six to eight sampling steps.
+The older `v1-850 EMA` is an optional fallback for heavy or fast motion when a request
+must stay at exactly four steps. Here `v4` names the training recipe and `step600`
+the training checkpoint; neither is the inference step count.
 
 ## Generate
 
@@ -129,6 +150,24 @@ Frame requests are aligned to the Video VAE's `17n + 5` rule and capped at the
 released 15-second limit. Use `--steps 10` for a faster preview; `--steps 20` is the
 quality baseline.
 
+To use the community Turbo LoRA, provide its local path explicitly. This switches the
+DiT phase to first-order Euler with video and audio advancing on their own sigma grids:
+
+```sh
+uv run mlx-h3 "$MLX_H3_INPUT_TEXT" \
+  --turbo-lora weights/adapters/minimax-h3-turbo/minimax_h3_turbo_v4_step600_ema.safetensors \
+  --steps 6 \
+  --output outputs/turbo-result.mp4
+```
+
+Turbo mode defaults to six steps and accepts explicit values from four through eight;
+values outside that range fail before model loading. Both checkpoints use the same module
+geometry and inference path, so selecting one does not change per-step cost. The adapters
+are a community early preview, not an official MiniMax release. Their module geometry
+matches both local DiTs; T2VA/FL2VA has the author-supported base path. Ref2VA is
+structurally compatible and has passed local smoke validation, but remains experimental
+because its author has not yet declared Ref2VA support.
+
 Run `uv run mlx-h3 --help` for checkpoint path overrides and all generation options.
 
 ## Memory model
@@ -137,7 +176,7 @@ The pipeline intentionally keeps only one large model phase resident at a time:
 
 ```text
 reference encoders -> release -> text/vision encode -> release
-                   -> joint denoise -> release -> video decode -> release
+                   -> joint denoise (+ optional LoRA) -> release -> video decode -> release
                    -> audio decode -> release -> mux
 ```
 

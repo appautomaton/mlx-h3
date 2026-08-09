@@ -51,7 +51,7 @@ own weights. Feed `h_in`, assert `h_out`.
 `minimax_h3_layout.json` carries `constants`, `frame_grid`, `temporal_shape`, `adapt_canvas`,
 `sigma_schedule`, `frame_position_grid`, `video_t_grid`, `rope_freqs`, `packed_layout`.
 
-## Six ways to be silently wrong
+## Seven ways to be silently wrong
 
 The first four are what the block fixture exists to catch:
 
@@ -70,6 +70,11 @@ Two more from the diffusers documentation:
    terminal 0**, so it drives one fewer model evaluation than its value suggests. The current
    runtime instead follows the released Comfy workflow: 20 `simple` steps mean 20 model calls and
    21 sigma points, with `res_multistep` rather than Euler.
+7. **Do not copy the Turbo custom sampler's audio slope division into this runtime.** Comfy's
+   sampler receives a packed derivative whose audio component is already mapped onto the video
+   sigma grid. `MiniMaxH3.__call__` instead returns raw audio velocity. Paired Euler must advance
+   that raw value directly from `sigma_audio` to `sigma_audio_next`; dividing by the slope again
+   applies the conversion twice.
 
 ## Performance: the DiT is already at the compute roofline
 
@@ -93,6 +98,11 @@ residency, not throughput.
 
 Wall clock only moves via **fewer forwards** (fewer steps, TeaCache-style step cache) or **less
 math per forward** (sparse attention — still withheld upstream; MiniMax says it is coming).
+
+The community Turbo LoRA realizes the first option. Its BF16 low-rank branch stays separate from
+the MLX affine-8-bit base, and its paired-schedule Euler path reduces the requested model calls to
+four through eight, defaulting to six, without changing phase residency. Pure-MLX adapter loading
+and bounded end-to-end execution are validated without using a Torch reference run.
 
 Quantization mechanics (dtype filtering, lookup tables, lazy reads) live in
 `weights.md`, not here.

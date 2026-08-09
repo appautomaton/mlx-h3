@@ -17,6 +17,7 @@ import math
 from collections.abc import Callable
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import Enum
 
 import mlx.core as mx
 
@@ -24,6 +25,54 @@ from . import layout, memory
 from .layout import PackedLayout
 
 DEFAULT_STEPS = 20
+
+
+class Solver(str, Enum):
+    RES_MULTISTEP = "res_multistep"
+    EULER = "euler"
+
+
+@dataclass(frozen=True)
+class SamplingProfile:
+    """One coherent step range and solver selection."""
+
+    label: str
+    solver: Solver
+    default_steps: int
+    min_steps: int
+    max_steps: int
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.min_steps <= self.default_steps <= self.max_steps <= 1000:
+            raise ValueError(
+                "sampling profile must satisfy "
+                "1 <= min_steps <= default_steps <= max_steps <= 1000"
+            )
+
+    def resolve_steps(self, requested: int | None) -> int:
+        steps = self.default_steps if requested is None else requested
+        if not self.min_steps <= steps <= self.max_steps:
+            raise ValueError(
+                f"{self.label} steps must be in "
+                f"[{self.min_steps}, {self.max_steps}], got {steps}"
+            )
+        return steps
+
+
+BASE_PROFILE = SamplingProfile(
+    label="base",
+    solver=Solver.RES_MULTISTEP,
+    default_steps=DEFAULT_STEPS,
+    min_steps=1,
+    max_steps=1000,
+)
+TURBO_PROFILE = SamplingProfile(
+    label="Turbo LoRA",
+    solver=Solver.EULER,
+    default_steps=6,
+    min_steps=4,
+    max_steps=8,
+)
 
 
 @dataclass(frozen=True)
@@ -242,3 +291,69 @@ def denoise(
         if on_step is not None:
             on_step(completed, sigmas.steps, sigma_video, sigma_audio)
     return video, audio
+
+
+def denoise_euler(
+    model: Callable[..., tuple[mx.array, mx.array]],
+    video_latent: mx.array,
+    audio_latent: mx.array,
+    text_embed: mx.array,
+    packed: PackedLayout,
+    sigmas: SigmaSchedule,
+    *,
+    cond_video_rows: mx.array | None = None,
+    cond_audio_rows: mx.array | None = None,
+    text_tags: Sequence[int] | None = None,
+    guard: memory.Guard | None = None,
+    on_step: Callable[[int, int, float, float], None] | None = None,
+) -> tuple[mx.array, mx.array]:
+    """First-order Euler with video and audio on their own sigma grids.
+
+    The model returns raw data-ward velocities. Unlike the RES path, no audio
+    slope mapping is needed: each modality advances directly by its own sigma
+    interval. This is the trajectory expected by the community Turbo LoRA.
+    """
+    video, audio = video_latent, audio_latent
+    for index in range(sigmas.steps):
+        sigma_video = sigmas.video[index]
+        sigma_audio = sigmas.audio[index]
+        conditioning = {}
+        if cond_video_rows is not None:
+            conditioning["cond_video_rows"] = cond_video_rows
+        if cond_audio_rows is not None:
+            conditioning["cond_audio_rows"] = cond_audio_rows
+        if text_tags is not None:
+            conditioning["text_tags"] = text_tags
+        video_velocity, audio_velocity = model(
+            video,
+            audio,
+            text_embed,
+            packed,
+            sigma_video=sigma_video,
+            sigma_audio=sigma_audio,
+            step_index=index,
+            **conditioning,
+        )
+        video = _euler_step(
+            video, video_velocity, sigma_video, sigmas.video[index + 1]
+        )
+        audio = _euler_step(
+            audio, audio_velocity, sigma_audio, sigmas.audio[index + 1]
+        )
+        mx.eval(video, audio)
+
+        completed = index + 1
+        if guard is not None:
+            guard.check(f"step {completed}/{sigmas.steps}")
+        if on_step is not None:
+            on_step(completed, sigmas.steps, sigma_video, sigma_audio)
+    return video, audio
+
+
+def denoiser(profile: SamplingProfile):
+    """Return the solver implementation declared by a sampling profile."""
+    if profile.solver is Solver.RES_MULTISTEP:
+        return denoise
+    if profile.solver is Solver.EULER:
+        return denoise_euler
+    raise ValueError(f"unsupported solver: {profile.solver}")

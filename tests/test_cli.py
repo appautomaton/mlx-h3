@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from mlx_h3 import cli
+from mlx_h3 import cli, sampler
 
 
 def test_prompt_file_preserves_structure_and_requires_one_source(tmp_path: Path):
@@ -40,3 +40,25 @@ def test_reference_flags_preserve_cross_modality_cli_order():
         "video",
     ]
     assert args.references[-1].include_video_audio is False
+
+
+def test_turbo_lora_path_is_explicit():
+    args = cli._build_parser().parse_args(
+        ["request", "--turbo-lora", "weights/adapters/turbo.safetensors", "--steps", "6"]
+    )
+
+    assert args.turbo_lora == "weights/adapters/turbo.safetensors"
+    assert args.steps == 6
+
+
+def test_step_default_is_resolved_from_adapter_presence():
+    parser = cli._build_parser()
+    base = parser.parse_args(["request"])
+    turbo = parser.parse_args(
+        ["request", "--turbo-lora", "weights/adapters/turbo.safetensors"]
+    )
+
+    assert base.steps is None
+    assert turbo.steps is None
+    assert sampler.BASE_PROFILE.resolve_steps(base.steps) == 20
+    assert sampler.TURBO_PROFILE.resolve_steps(turbo.steps) == 6

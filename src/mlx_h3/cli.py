@@ -51,7 +51,16 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--frames", type=int, default=56)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--steps", type=int, default=sampler.DEFAULT_STEPS)
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=None,
+        help=(
+            f"sampling steps (default: {sampler.BASE_PROFILE.default_steps} base, "
+            f"{sampler.TURBO_PROFILE.default_steps} with Turbo LoRA; Turbo allows "
+            f"{sampler.TURBO_PROFILE.min_steps}-{sampler.TURBO_PROFILE.max_steps})"
+        ),
+    )
     parser.add_argument("--first-frame")
     parser.add_argument("--last-frame")
     parser.add_argument(
@@ -110,6 +119,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=pipeline.ModelPaths.ref_dit,
         help="dedicated Ref2VA DiT checkpoint",
     )
+    parser.add_argument(
+        "--turbo-lora",
+        default=pipeline.ModelPaths.turbo_lora,
+        help="optional BF16 MiniMax-H3 Turbo LoRA; uses paired-schedule Euler",
+    )
     parser.add_argument("--video-vae", default=pipeline.ModelPaths.video_vae)
     parser.add_argument("--audio-vae", default=pipeline.ModelPaths.audio_vae)
     return parser
@@ -134,8 +148,18 @@ def _resolve_prompt(prompt: str | None, prompt_file: str | None) -> str:
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
+    paths = pipeline.ModelPaths(
+        tokenizer=args.tokenizer,
+        text_encoder=args.text_encoder,
+        dit=args.dit,
+        ref_dit=args.ref_dit,
+        turbo_lora=args.turbo_lora,
+        video_vae=args.video_vae,
+        audio_vae=args.audio_vae,
+    )
     try:
         prompt = _resolve_prompt(args.prompt, args.prompt_file)
+        steps = paths.sampling_profile.resolve_steps(args.steps)
     except ValueError as error:
         parser.error(str(error))
 
@@ -145,19 +169,11 @@ def main() -> int:
         height=args.height,
         frames=args.frames,
         seed=args.seed,
-        steps=args.steps,
+        steps=steps,
         first_frame=args.first_frame,
         last_frame=args.last_frame,
         references=tuple(args.references or ()),
         ref_image_size=args.ref_image_size,
-    )
-    paths = pipeline.ModelPaths(
-        tokenizer=args.tokenizer,
-        text_encoder=args.text_encoder,
-        dit=args.dit,
-        ref_dit=args.ref_dit,
-        video_vae=args.video_vae,
-        audio_vae=args.audio_vae,
     )
     try:
         paths.validate(ref2va=bool(config.references))

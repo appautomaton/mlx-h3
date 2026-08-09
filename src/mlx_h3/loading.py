@@ -16,6 +16,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_flatten
 
+from . import lora
 from .audio_vae import AudioVAE, AudioVAEConfig, AudioVAEEncoder
 from .model import H3Config, MiniMaxH3, Plan
 from .text_encoder import MultimodalTextEncoder, TextEncoder, TextEncoderConfig
@@ -63,6 +64,8 @@ def load_dit(
     *,
     plans: tuple[Plan, ...] | None = None,
     modulation_dtype: mx.Dtype | None = None,
+    adapter_path: str | Path | None = None,
+    adapter_strength: float = 1.0,
 ) -> MiniMaxH3:
     header, metadata = read_header(path)
     model = prepare(MiniMaxH3(config), header, metadata)
@@ -74,6 +77,17 @@ def load_dit(
             f"{len(unexpected)} unexpected (e.g. {sorted(unexpected)[:3]})"
         )
     model.load_weights(str(path))
+    if adapter_path is not None:
+        adapter_header, adapter_metadata = read_header(adapter_path)
+        adapter_weights = mx.load(str(adapter_path))
+        lora.attach(
+            model,
+            adapter_header,
+            adapter_metadata,
+            adapter_weights,
+            strength=adapter_strength,
+        )
+        del adapter_weights
     if plans is not None:
         if modulation_dtype is None:
             raise ValueError("modulation_dtype is required with step plans")

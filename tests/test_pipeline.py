@@ -8,6 +8,7 @@ scalar-only optional telemetry.
 from __future__ import annotations
 
 import weakref
+from dataclasses import replace
 from pathlib import Path
 
 import mlx.core as mx
@@ -158,6 +159,35 @@ def test_model_paths_report_all_missing_files_before_loading(tmp_path: Path):
     assert "FL2VA DiT:" not in message
     assert "Video VAE:" in message
     assert "Audio VAE:" in message
+
+
+def test_model_paths_select_sampling_profile_from_adapter_presence(tmp_path: Path):
+    base = fake_model_paths(tmp_path)
+    turbo = replace(base, turbo_lora=tmp_path / "turbo.safetensors")
+
+    assert base.sampling_profile is pipeline.sampler.BASE_PROFILE
+    assert turbo.sampling_profile is pipeline.sampler.TURBO_PROFILE
+
+
+def test_turbo_adapter_is_required_and_enforces_four_to_eight_steps(tmp_path: Path):
+    missing = tmp_path / "missing-turbo.safetensors"
+    paths = replace(fake_model_paths(tmp_path), turbo_lora=missing)
+    with pytest.raises(FileNotFoundError, match="Turbo LoRA"):
+        paths.validate(ref2va=False)
+
+    missing.touch()
+    with pytest.raises(ValueError, match=r"\[4, 8\].*3"):
+        pipeline.generate(
+            pipeline.GenerationConfig("input", width=32, height=32, frames=5, steps=3),
+            paths,
+            FakeGuard(),
+        )
+    with pytest.raises(ValueError, match=r"\[4, 8\].*9"):
+        pipeline.generate(
+            pipeline.GenerationConfig("input", width=32, height=32, frames=5, steps=9),
+            paths,
+            FakeGuard(),
+        )
 
 
 def test_generate_runs_all_models_in_separate_phases(monkeypatch, tmp_path: Path):
