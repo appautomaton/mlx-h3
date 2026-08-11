@@ -20,13 +20,14 @@ SUPPORTED_GROUP_SIZES = (64, 256, 448, 896)
 _TRUNK_LINEAR_NAMES = ("qkv_proj", "out_proj", "fc1", "fc2")
 
 
-def _operation():
+def _operations():
     try:
-        return import_module("mlx_nax_int").grouped_matmul
+        extension = import_module("mlx_nax_int")
+        return extension.grouped_quantize, extension.grouped_matmul
     except (ImportError, AttributeError) as error:
         raise RuntimeError(
             "NAX W8A8 requires the local mlx_nax_int extension with "
-            "grouped_matmul support"
+            "grouped_quantize and grouped_matmul support"
         ) from error
 
 
@@ -80,26 +81,13 @@ class GroupedW8A8Linear(nn.Module):
         if x.ndim != 2 or x.dtype != mx.bfloat16:
             raise ValueError("NAX W8A8 linears require a 2D bfloat16 input")
         rows, input_dims = x.shape
-        groups = input_dims // self.group_size
-        grouped = x.reshape(rows, groups, self.group_size)
-        scales = mx.maximum(
-            mx.max(mx.abs(grouped), axis=-1, keepdims=True) / 127.0,
-            1e-8,
-        ).astype(mx.bfloat16)
-        quantized = mx.clip(mx.round(grouped / scales), -127, 127).astype(
-            mx.int8
-        ).reshape(x.shape)
-        scales = scales[..., 0]
-
         padded_rows = (rows + 63) // 64 * 64
         if padded_rows != rows:
-            padding = padded_rows - rows
-            quantized = mx.pad(quantized, ((0, padding), (0, 0)))
-            scales = mx.pad(
-                scales, ((0, padding), (0, 0)), constant_values=1
-            )
+            x = mx.pad(x, ((0, padded_rows - rows), (0, 0)))
 
-        output = _operation()(
+        grouped_quantize, grouped_matmul = _operations()
+        quantized, scales = grouped_quantize(x, self.group_size)
+        output = grouped_matmul(
             quantized,
             self.weight,
             scales,

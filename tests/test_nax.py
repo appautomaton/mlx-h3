@@ -29,8 +29,11 @@ def test_grouped_w8a8_rejects_unsupported_geometry():
 @pytest.mark.runtime
 def test_grouped_w8a8_extension_matches_quantized_linear():
     extension = pytest.importorskip("mlx_nax_int")
-    if not hasattr(extension, "grouped_matmul"):
-        pytest.skip("mlx_nax_int lacks grouped_matmul")
+    if not all(
+        hasattr(extension, name)
+        for name in ("grouped_quantize", "grouped_matmul")
+    ):
+        pytest.skip("mlx_nax_int lacks fused grouped W8A8 operations")
 
     base = quantized_linear()
     layer = nax.GroupedW8A8Linear(base, group_size=64)
