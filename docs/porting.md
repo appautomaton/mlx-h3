@@ -93,11 +93,19 @@ these shapes. The whole line item a hand-written kernel could win is a couple of
 `[t_dim -> 6*hidden*3]` matmul per block against 2–4 rows. The runtime materializes the request's
 exact schedule and releases roughly 13 GiB of AdaLN weights before denoising. See `weights.md`.
 
-**Quantization buys footprint, not speed.** The workload is compute-bound, so 8-bit is chosen for
-residency, not throughput.
+**Default MLX affine quantization buys footprint, not speed.** Its activations remain BF16, so the
+8-bit checkpoint is chosen for residency rather than lower-precision matrix throughput.
 
-Wall clock only moves via **fewer forwards** (fewer steps, TeaCache-style step cache) or **less
-math per forward** (sparse attention — still withheld upstream; MiniMax says it is coming).
+An explicit M5-only development path in `mlx_h3.nax` instead quantizes activations and dispatches
+native W8A8 TensorOps through a local MLX extension. `dev/one_step.py --nax-group-size ...` is the
+validation entry point. It converts only the 200 attention/MLP trunk linears after AdaLN precompute;
+the default runtime and public CLI remain W8A16. One-step numerical parity and performance are
+measured, but that does not establish 20-step perceptual quality.
+
+The largest wall-clock levers remain **fewer forwards** (fewer steps, TeaCache-style step cache) and
+**less math per forward** (sparse attention — still withheld upstream; MiniMax says it is coming).
+Native lower-precision trunk GEMM is a smaller, hardware-specific lever now covered by the NAX
+experiment above.
 
 The community Turbo LoRA realizes the first option. Its BF16 low-rank branch stays separate from
 the MLX affine-8-bit base, and its paired-schedule Euler path reduces the requested model calls to

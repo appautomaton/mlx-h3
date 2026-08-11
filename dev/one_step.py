@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import time
+from pathlib import Path
 
 import mlx.core as mx
 
@@ -28,8 +29,20 @@ def main() -> int:
     ap.add_argument("--shape", choices=list(SHAPES), default="dev")
     ap.add_argument("--text-len", type=int, default=512)
     ap.add_argument("--budget", type=int, default=memory.BUDGET_GIB)
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--save-velocity",
+        type=Path,
+        help="optional untracked safetensors output for numerical A/B checks",
+    )
     ap.add_argument("--dit", default="weights/mlx-8bit/dit_fl2va_a8g32.safetensors")
     ap.add_argument("--turbo-lora")
+    ap.add_argument(
+        "--nax-group-size",
+        type=int,
+        choices=(64, 256, 448, 896),
+        help="experimental M5 W8A8 group size; default keeps MLX W8A16",
+    )
     ap.add_argument(
         "--steps",
         type=int,
@@ -78,11 +91,13 @@ def main() -> int:
         plans=plans,
         modulation_dtype=mx.bfloat16,
         adapter_path=args.turbo_lora,
+        nax_group_size=args.nax_group_size,
     )
     guard.check("after load")
     print(memory.report(f"loaded {time.perf_counter() - t0:5.1f}s  "))
 
     cfg = dit.config
+    mx.random.seed(args.seed)
     video = mx.random.normal((1, cfg.latents_dim, latent_t, latent_h, latent_w))
     audio = mx.random.normal((1, cfg.audio_latents_dim, 2, audio_t))
     text = mx.random.normal((args.text_len, cfg.hidden_size), dtype=mx.bfloat16)
@@ -127,6 +142,16 @@ def main() -> int:
         and mx.isfinite(audio_velocity).all().item()
     )
     print(f"  finite: {finite}   |v| max {mx.abs(video_velocity).max().item():.4f}")
+    if args.save_velocity is not None:
+        args.save_velocity.parent.mkdir(parents=True, exist_ok=True)
+        mx.save_safetensors(
+            str(args.save_velocity),
+            {"video": video_velocity, "audio": audio_velocity},
+            metadata={
+                "seed": str(args.seed),
+                "nax_group_size": str(args.nax_group_size),
+            },
+        )
     return 0 if finite else 1
 
 

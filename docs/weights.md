@@ -71,9 +71,16 @@ it. That rotation lives in comfy_kitchen CUDA code (`comfy.quant_ops.ck`), not i
 You cannot adopt half of one strategy: taking the int8 weights without the rotation destroys
 accuracy, and implementing the rotation means reverse-engineering the CUDA side first.
 
-**8-bit is the correct serving configuration, not a compromise.** The workload is compute-bound, so
-quantization buys footprint and not speed. Corollary: a dequant-once bf16 weight cache is a dead
-end — it recreates the bf16 residency regime without buying anything.
+**8-bit is the correct serving configuration, not a compromise.** In the default MLX affine path,
+activations remain BF16, so weight quantization buys footprint rather than compute throughput.
+A dequant-once BF16 weight cache is therefore a dead end: it recreates the BF16 residency regime
+without buying anything.
+
+The opt-in M5 NAX experiment is a different execution path. It requantizes only the already-loaded
+8-bit trunk linears into symmetric W8A8 groups and uses native integer TensorOps. It never reads the
+dense source checkpoint. This path remains a development experiment because its speed and error
+depend on group size, and full multi-step generation quality is not yet an accepted serving
+baseline.
 
 ## Requantization rules
 
