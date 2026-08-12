@@ -103,12 +103,13 @@ the default runtime and public CLI remain W8A16. Activation max reduction, BF16 
 and int8 casting are fused into one Metal kernel before the group-scaled integer matrix multiply.
 
 On an M5 Max at the `dev` shape (56 frames, 864x480, text length 512, sequence length 7,583), three
-fixed-seed one-step runs measured a 25.43 s median for group 896. The corresponding default W8A16
-median was 35.30 s, giving a 1.39x speedup and 28.0% lower step time. Fusing activation
-quantization improved the earlier W8A8 median from 31.62 s to 25.43 s while producing bit-identical
-one-step video and audio tensors. Against W8A16, the one-step NRMSE was 1.51% for video and 1.20%
-for audio. These measurements establish one-step numerical parity and performance, not 20-step
-perceptual quality.
+fixed-seed one-step runs measured a 23.01 s median for group 896. The corresponding default W8A16
+median was 35.30 s, giving a 1.53x speedup and 34.8% lower step time. Fusing activation
+quantization first improved the earlier W8A8 median from 31.62 s to 25.43 s. Staging each output
+tile's activation and weight scales in threadgroup memory then reduced the median to 23.01 s. Both
+optimizations produce bit-identical one-step W8A8 video and audio tensors. Against W8A16, the
+one-step NRMSE was 1.51% for video and 1.20% for audio. These measurements establish one-step
+numerical parity and performance, not 20-step perceptual quality.
 
 The largest wall-clock levers remain **fewer forwards** (fewer steps, TeaCache-style step cache) and
 **less math per forward** (sparse attention — still withheld upstream; MiniMax says it is coming).
