@@ -109,7 +109,20 @@ quantization first improved the earlier W8A8 median from 31.62 s to 25.43 s. Sta
 tile's activation and weight scales in threadgroup memory then reduced the median to 23.01 s. Both
 optimizations produce bit-identical one-step W8A8 video and audio tensors. Against W8A16, the
 one-step NRMSE was 1.51% for video and 1.20% for audio. These measurements establish one-step
-numerical parity and performance, not 20-step perceptual quality.
+numerical parity and performance.
+
+A fixed-seed, 20-step T2VA A/B at the same canvas and frame count, with 23 prompt tokens and a
+7,094-token packed sequence, completed end to end in 7.3 minutes for W8A8 versus 9.3 minutes for
+W8A16. DiT execution was 391.7 s (19.59 s/step) versus 520.0 s (26.00 s/step), a 1.33x speedup and
+24.7% lower DiT time. W8A8 DiT active memory was 19.2 GiB versus 21.4 GiB. The common text-encoder
+phase set the overall 27.0 GiB peak in both runs. Video decode took roughly 29 s and audio decode
+roughly 0.6 s, so neither is the next material bottleneck at this shape.
+
+The encoded 20-step outputs had video SSIM 0.9588 and PSNR 33.83 dB. Decoded audio had cosine
+similarity 0.9904 and mean absolute error 0.000787. First, middle, and final frame inspection found
+small cloud and wave-detail differences without structural failure. This is one complete quality
+sample, not a generally accepted perceptual baseline; the sequential run order may also include
+thermal-state effects in the timing comparison.
 
 The largest wall-clock levers remain **fewer forwards** (fewer steps, TeaCache-style step cache) and
 **less math per forward** (sparse attention — still withheld upstream; MiniMax says it is coming).

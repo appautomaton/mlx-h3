@@ -170,6 +170,21 @@ because its author has not yet declared Ref2VA support.
 
 Run `uv run mlx-h3 --help` for checkpoint path overrides and all generation options.
 
+On M5 hardware, the local experimental NAX extension can replace the 200 main
+DiT trunk linears with group-scaled W8A8 execution. This remains opt-in and does
+not load dense DiT weights:
+
+```sh
+uv run mlx-h3 "$MLX_H3_INPUT_TEXT" \
+  --nax-group-size 896 \
+  --output outputs/nax-result.mp4
+```
+
+The extension must first be installed from the matching local MLX experiment.
+The default remains MLX W8A16. One fixed-seed full generation has passed local
+numerical and visual A/B checks, but that is not a general perceptual-quality
+baseline.
+
 ## Memory model
 
 The pipeline intentionally keeps only one large model phase resident at a time:

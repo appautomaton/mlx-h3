@@ -51,6 +51,13 @@ def test_turbo_lora_path_is_explicit():
     assert args.steps == 6
 
 
+def test_nax_group_size_is_explicit():
+    args = cli._build_parser().parse_args(
+        ["input", "--nax-group-size", "896"]
+    )
+    assert args.nax_group_size == 896
+
+
 def test_step_default_is_resolved_from_adapter_presence():
     parser = cli._build_parser()
     base = parser.parse_args(["request"])
