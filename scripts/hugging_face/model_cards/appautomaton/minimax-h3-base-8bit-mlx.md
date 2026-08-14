@@ -3,7 +3,7 @@ language:
 - en
 license: other
 license_name: minimax-h3-community-license
-license_link: https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE
+license_link: LICENSE
 library_name: mlx
 pipeline_tag: text-to-video
 base_model: MiniMaxAI/MiniMax-H3
@@ -27,19 +27,22 @@ tags:
 [![App Automaton](https://img.shields.io/badge/App%20Automaton-project-1f6feb?style=flat-square)](https://appautomaton.renocrypt.com)
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97-appautomaton-yellow?style=flat-square)](https://huggingface.co/appautomaton)
 
-MLX affine 8-bit conversion of **H3-Base**, the open stage of [MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3). It turns text into synchronized video and stereo audio, denoised together in one packed sequence. Runs on Apple silicon through the [`mlx-h3`](https://github.com/appautomaton/mlx-h3) runtime with no PyTorch, CUDA, or cloud API at inference time.
+Complete mixed-precision MLX runtime bundle for **H3-Base**, the open stage of [MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3). The DiTs and text encoder use MLX affine 8-bit serving weights, while the quality-sensitive Video and Audio VAEs remain at their released FP16 and FP32 precision. It turns text into synchronized video and stereo audio, denoised together in one packed sequence, with no PyTorch, CUDA, or cloud API at inference time.
 
 ## Contents
 
 | File | Size | Role |
 | --- | ---: | --- |
-| `dit_fl2va_a8g32.safetensors` | 34.8 GiB | DiT for text and 0–2 keyframes |
-| `dit_ref2va_a8g32.safetensors` | 34.8 GiB | DiT for reference conditioning |
-| `te_qwen3vl_a8g32.safetensors` | 27.7 GiB | Qwen3-VL-32B text encoder |
+| `mlx-8bit/dit_fl2va_a8g32.safetensors` | 34.8 GiB | DiT for text and 0–2 keyframes; affine 8-bit |
+| `mlx-8bit/dit_ref2va_a8g32.safetensors` | 34.8 GiB | DiT for reference conditioning; affine 8-bit |
+| `mlx-8bit/te_qwen3vl_a8g32.safetensors` | 27.7 GiB | Qwen3-VL-32B text encoder; affine 8-bit |
+| `bf16/vae/minimax_h3_video_vae_fp16.safetensors` | 4.85 GiB | Unmodified Video VAE; FP16 |
+| `bf16/vae/minimax_h3_audio_vae_fp32.safetensors` | 577 MiB | Unmodified Audio VAE; FP32 |
+| `tokenizer/tokenizer.json` | 6.7 MiB | Unmodified Qwen tokenizer |
 
-Pull one with `--include`. You do not need all three.
+The complete bundle is 102.7 GiB. Downloading it into `weights/` produces exactly the directory layout expected by `mlx-h3`.
 
-The two DiTs are structurally identical and differ only in input packing. Load one, selected by conditioning mode, never both.
+The two DiTs are structurally identical and differ only in input packing. The runtime loads one, selected by conditioning mode, never both. A selective download can therefore omit the DiT mode that will not be used.
 
 ## Quantization
 
@@ -67,35 +70,22 @@ MiniMax-H3 ships as three stages. Only the middle one is released.
 | **H3-Base** | 768p joint audio-video generation | **Yes** |
 | H3-Regenerate-2K | 768p → 2K upscale | No |
 
-Two consequences worth knowing before you download 97 GiB:
+Two consequences worth knowing before you download the bundle:
 
 - **Nothing rewrites your prompt.** The hosted product expands a one-line request into a structured brief first. Here the encoder sees exactly what you send. See [the prompting guide](https://github.com/appautomaton/mlx-h3/blob/main/docs/prompting.md).
 - **Output is 768p.** The 2K figures in hosted guides describe the third stage, which is not open.
 
-## Not included
+## Upstream assets included unchanged
 
-Three unmodified upstream files are required at runtime and are **not** in this repository. They live in two different places.
+Three small or dense runtime assets are included unchanged so one repository download is sufficient.
 
-Both VAEs come from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3):
+Both VAEs come from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3), and the tokenizer comes from the [official MiniMax-H3 release](https://huggingface.co/MiniMaxAI/MiniMax-H3). Their SHA-256 digests are recorded here for provenance.
 
-```sh
-hf download Comfy-Org/MiniMax-H3 \
-  vae/minimax_h3_video_vae_fp16.safetensors \
-  vae/minimax_h3_audio_vae_fp32.safetensors \
-  --local-dir weights/bf16
-```
-
-The tokenizer is not in that repack. Take it from the official release:
-
-```sh
-hf download MiniMaxAI/MiniMax-H3 tokenizer/tokenizer.json --local-dir weights
-```
-
-```
-video VAE   fp16   4.85 GiB
-audio VAE   fp32   577 MiB
-tokenizer          6.7 MiB
-```
+| File | SHA-256 |
+| --- | --- |
+| `minimax_h3_video_vae_fp16.safetensors` | `7c1f131492e7eddacaac9069a61b81bdd39de5cc96561e677c5eab1cdce5e522` |
+| `minimax_h3_audio_vae_fp32.safetensors` | `8e505d95dd1561d47abd43d4238fd40d9bb1ae9e147ed0a4cba778d76ae4db48` |
+| `tokenizer.json` | `a5d85b6dcc535e6b93115a9ef287e6132fdbf30270da6218194ba742261173c7` |
 
 ## Works with these files
 
@@ -105,7 +95,7 @@ tokenizer          6.7 MiB
 ## How to get started
 
 ```sh
-hf download appautomaton/minimax-h3-base-8bit-mlx --local-dir weights/mlx-8bit
+hf download appautomaton/minimax-h3-base-8bit-mlx --local-dir weights
 ```
 
 Runtime install and usage: [`mlx-h3` on PyPI](https://pypi.org/project/mlx-h3/) ·
@@ -125,12 +115,12 @@ Apple silicon with enough unified memory to hold one model at a time. The DiT an
 
 ## License
 
-These files are **modified**, meaning quantized derivatives of the original release rather than the original weights.
+The DiTs and text encoder are **modified** quantized derivatives. The tokenizer and both VAEs are unmodified upstream assets included to make the runtime bundle complete.
 
-The two DiTs are governed by the [MiniMax H3 Community License Agreement](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE), which applies to you as a recipient. It carries territorial limits and an acceptable-use policy, so read it before use.
+The DiTs and VAEs are governed by the [MiniMax H3 Community License Agreement](LICENSE), which applies to you as a recipient. It carries territorial limits and an acceptable-use policy, so read it before use. The required redistribution notice is provided in [`NOTICE`](NOTICE).
 
 > MiniMax H3 is licensed under the MiniMax H3 Community License Agreement, Copyright © 2026 MiniMax. All Rights Reserved.
 
-`te_qwen3vl_a8g32.safetensors` derives from [Qwen3-VL-32B](https://huggingface.co/Qwen/Qwen3-VL-32B-Instruct), licensed under [Apache 2.0](https://github.com/QwenLM/Qwen3-VL/blob/main/LICENSE).
+`mlx-8bit/te_qwen3vl_a8g32.safetensors` and `tokenizer/tokenizer.json` derive from [Qwen3-VL-32B](https://huggingface.co/Qwen/Qwen3-VL-32B-Instruct), licensed under [Apache 2.0](LICENSE-QWEN).
 
 The `mlx-h3` runtime code is separately licensed under MIT.

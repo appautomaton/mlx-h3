@@ -4,13 +4,13 @@ What is on disk, what inference loads, and the rules for producing the quantized
 
 ## Layout
 
-    weights/tokenizer/  from MiniMaxAI/MiniMax-H3
+    weights/tokenizer/  bundled unchanged from MiniMaxAI/MiniMax-H3
       tokenizer.json                                          6.7 MiB
     weights/mlx-8bit/   produced by dev/quantize.py, published as appautomaton/minimax-h3-base-8bit-mlx
       dit_fl2va_a8g32.safetensors                            34.8 GiB  260 of 535 modules quantized
       dit_ref2va_a8g32.safetensors                           34.8 GiB  260 of 535 modules quantized
       te_qwen3vl_a8g32.safetensors                           27.7 GiB  439 of 902 modules quantized
-    weights/bf16/       source, from Comfy-Org/MiniMax-H3
+    weights/bf16/       dense runtime VAEs plus optional requantization sources
       diffusion_models/minimax_h3_fl2va_bf16.safetensors     61.7 GiB  535 tensors
       diffusion_models/minimax_h3_ref2va_bf16.safetensors    61.7 GiB  535 tensors
       text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors  48.0 GiB  902 tensors
@@ -29,29 +29,18 @@ its own `source` filename in safetensors metadata, alongside `quantization.mode`
 
 ## Getting the files
 
-The quantized build is published, so requantization is optional:
+The complete mixed-precision runtime bundle is published, so one download installs the
+8-bit DiTs and text encoder, both dense VAEs, and the tokenizer at their default paths:
 
 ```bash
-hf download appautomaton/minimax-h3-base-8bit-mlx --local-dir weights/mlx-8bit
+hf download appautomaton/minimax-h3-base-8bit-mlx --local-dir weights
 ```
 
-The runtime also needs both dense VAEs, which are unmodified upstream files:
+The bundled VAEs are unmodified files from Comfy-Org/MiniMax-H3, and the bundled tokenizer is
+the unmodified `tokenizer/tokenizer.json` from MiniMaxAI/MiniMax-H3. Their source hashes are
+recorded in the published model card.
 
-```bash
-hf download Comfy-Org/MiniMax-H3 \
-  vae/minimax_h3_video_vae_fp16.safetensors \
-  vae/minimax_h3_audio_vae_fp32.safetensors \
-  --local-dir weights/bf16
-```
-
-The tokenizer is in neither the Comfy-Org repack nor the quantized build. It comes from the
-official release:
-
-```bash
-hf download MiniMaxAI/MiniMax-H3 tokenizer/tokenizer.json --local-dir weights
-```
-
-To requantize instead, fetch the BF16 sources:
+To reproduce the 8-bit artifacts, fetch the BF16 sources separately:
 
 ```bash
 hf download Comfy-Org/MiniMax-H3 \

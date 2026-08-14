@@ -103,27 +103,13 @@ requantization sources only, and inference never reads them.
 
 ### Getting the model files
 
-The 8-bit DiTs and text encoder are published as
+The complete mixed-precision runtime bundle is published as
 [appautomaton/minimax-h3-base-8bit-mlx](https://huggingface.co/appautomaton/minimax-h3-base-8bit-mlx).
-All three total about 97 GiB, so add `--include` to pull a single artifact:
+It contains the 8-bit DiTs and text encoder, both dense VAEs at their released precision,
+and the tokenizer in the directory layout expected by the runtime:
 
 ```sh
-hf download appautomaton/minimax-h3-base-8bit-mlx --local-dir weights/mlx-8bit
-```
-
-Both VAEs come from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3):
-
-```sh
-hf download Comfy-Org/MiniMax-H3 \
-  vae/minimax_h3_video_vae_fp16.safetensors \
-  vae/minimax_h3_audio_vae_fp32.safetensors \
-  --local-dir weights/bf16
-```
-
-Neither of those repositories carries a tokenizer. Take it from the official release:
-
-```sh
-hf download MiniMaxAI/MiniMax-H3 tokenizer/tokenizer.json --local-dir weights
+hf download appautomaton/minimax-h3-base-8bit-mlx --local-dir weights
 ```
 
 To build the 8-bit files locally from the BF16 sources instead of downloading them,
