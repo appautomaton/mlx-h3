@@ -4,7 +4,7 @@
 
 **Pure MLX MiniMax-H3 text-to-video-and-audio inference for Apple Silicon.**
 
-[![Pre-release](https://img.shields.io/badge/release-v0.0.1a3-F59E0B?style=flat-square)](https://github.com/appautomaton/mlx-h3/releases)
+[![Release](https://img.shields.io/github/v/release/appautomaton/mlx-h3?include_prereleases&style=flat-square&color=F59E0B&label=release)](https://github.com/appautomaton/mlx-h3/releases)
 [![PyPI](https://img.shields.io/pypi/v/mlx-h3?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/mlx-h3/)
 [![Python](https://img.shields.io/badge/Python-3.13%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-native-000000?style=flat-square&logo=apple&logoColor=white)](https://support.apple.com/mac/)
@@ -20,20 +20,21 @@ stereo audio jointly, keeps model residency phase-scoped, and targets large-memo
 Apple silicon systems without using PyTorch at runtime.
 
 > [!IMPORTANT]
-> This project is pre-alpha. This package version is released as the `v0.0.1a3`
-> GitHub pre-release. Model files are not included in the repository or PyPI package.
+> This project is pre-alpha. Every package version ships as a GitHub pre-release under
+> the matching `v{version}` tag. Model files are not included in the repository or in
+> the PyPI package.
 
 ## Why mlx-h3
 
-- **Joint audio and video** — one DiT denoises both modalities in a shared sequence.
-- **Pure MLX runtime** — no PyTorch execution and no CUDA dependency.
-- **Bounded model residency** — text encoder, DiT, Video VAE, and Audio VAE load and
+- **Joint audio and video.** One DiT denoises both modalities in a shared sequence.
+- **Pure MLX runtime.** No PyTorch execution and no CUDA dependency.
+- **Bounded model residency.** Text encoder, DiT, Video VAE, and Audio VAE load and
   release in separate phases.
-- **Current sampling baseline** — 20 `simple` schedule steps with the second-order
+- **Current sampling baseline.** 20 `simple` schedule steps with the second-order
   `res_multistep` solver.
-- **Dependency-light tokenizer** — byte-level BPE implemented locally from
+- **Dependency-light tokenizer.** Byte-level BPE implemented locally from
   `tokenizer.json`.
-- **Fail-fast memory guard** — configurable active-memory budget and swap detection.
+- **Fail-fast memory guard.** Configurable active-memory budget and swap detection.
 
 ## Current scope
 
@@ -46,6 +47,7 @@ Apple silicon systems without using PyTorch at runtime.
 | Ordered image/video/audio references (Ref2VA) | Working |
 | Reference-video soundtrack conditioning | Working |
 | Community Turbo LoRA with paired-schedule Euler | Working (opt-in) |
+| M5 NAX W8A8 DiT trunk | Experimental (opt-in) |
 | Context-IR and 2K regeneration | Not available locally |
 
 ## Requirements
@@ -70,10 +72,11 @@ cd mlx-h3
 uv sync
 ```
 
-Install the current PyPI pre-release:
+From PyPI. The `--prerelease allow` flag selects the current pre-release, so no
+version needs pinning:
 
 ```sh
-uv tool install --prerelease allow mlx-h3==0.0.1a3
+uv tool install --prerelease allow mlx-h3
 ```
 
 ## Local model layout
@@ -94,9 +97,39 @@ weights/
     └── minimax_h3_audio_vae_fp32.safetensors
 ```
 
-Dense DiT and text-encoder weights may be retained locally for requantization, but
-inference never loads them. The dense Video VAE and Audio VAE checkpoints are runtime
-inputs.
+Exactly one DiT loads per request, selected by conditioning mode. Both VAE checkpoints
+stay dense and are runtime inputs. Dense DiT and text-encoder checkpoints are
+requantization sources only, and inference never reads them.
+
+### Getting the model files
+
+The 8-bit DiTs and text encoder are published as
+[appautomaton/minimax-h3-base-8bit-mlx](https://huggingface.co/appautomaton/minimax-h3-base-8bit-mlx).
+All three total about 97 GiB, so add `--include` to pull a single artifact:
+
+```sh
+hf download appautomaton/minimax-h3-base-8bit-mlx --local-dir weights/mlx-8bit
+```
+
+Both VAEs come from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3):
+
+```sh
+hf download Comfy-Org/MiniMax-H3 \
+  vae/minimax_h3_video_vae_fp16.safetensors \
+  vae/minimax_h3_audio_vae_fp32.safetensors \
+  --local-dir weights/bf16
+```
+
+Neither of those repositories carries a tokenizer. Take it from the official release:
+
+```sh
+hf download MiniMaxAI/MiniMax-H3 tokenizer/tokenizer.json --local-dir weights
+```
+
+To build the 8-bit files locally from the BF16 sources instead of downloading them,
+see [docs/weights.md](docs/weights.md).
+
+### Optional Turbo adapters
 
 The optional community Turbo adapters stay BF16 and separate from both 8-bit DiT
 checkpoints. Download the two EMA checkpoints validated by this runtime from
@@ -112,8 +145,8 @@ hf download larryvrh/MiniMax-H3-Turbo-Lora \
 
 Use `v4-step600 EMA` for most requests, preferably at six to eight sampling steps.
 The older `v1-850 EMA` is an optional fallback for heavy or fast motion when a request
-must stay at exactly four steps. Here `v4` names the training recipe and `step600`
-the training checkpoint; neither is the inference step count.
+must stay at exactly four steps. Here `v4` names the training recipe and `step600` the
+training checkpoint. Neither is the inference step count.
 
 ## Generate
 
@@ -142,12 +175,12 @@ uv run mlx-h3 --prompt-file "$MLX_H3_PROMPT_FILE" \
 
 Conditioning inputs are explicit. `--first-frame` and `--last-frame` select the
 FL2VA path. Repeat `--ref-image`, `--ref-video`, and `--ref-audio` in the order
-Ref2VA should read them; use `--ref-video-silent` to ignore embedded audio or
+Ref2VA should read them. Use `--ref-video-silent` to ignore embedded audio, or
 `--ref-video-with-audio VIDEO AUDIO` to override a video's soundtrack.
 
 Canvas dimensions must be multiples of 32 and may not exceed `768 * 1344` pixels.
 Frame requests are aligned to the Video VAE's `17n + 5` rule and capped at the
-released 15-second limit. Use `--steps 10` for a faster preview; `--steps 20` is the
+released 15-second limit. Use `--steps 10` for a faster preview. `--steps 20` is the
 quality baseline.
 
 To use the community Turbo LoRA, provide its local path explicitly. This switches the
@@ -160,11 +193,11 @@ uv run mlx-h3 "$MLX_H3_INPUT_TEXT" \
   --output outputs/turbo-result.mp4
 ```
 
-Turbo mode defaults to six steps and accepts explicit values from four through eight;
-values outside that range fail before model loading. Both checkpoints use the same module
+Turbo mode defaults to six steps and accepts explicit values from four through eight.
+Values outside that range fail before model loading. Both checkpoints use the same module
 geometry and inference path, so selecting one does not change per-step cost. The adapters
 are a community early preview, not an official MiniMax release. Their module geometry
-matches both local DiTs; T2VA/FL2VA has the author-supported base path. Ref2VA is
+matches both local DiTs, and T2VA/FL2VA has the author-supported base path. Ref2VA is
 structurally compatible and has passed local smoke validation, but remains experimental
 because its author has not yet declared Ref2VA support.
 
@@ -180,10 +213,10 @@ uv run mlx-h3 "$MLX_H3_INPUT_TEXT" \
   --output outputs/nax-result.mp4
 ```
 
-The extension must first be installed from the matching local MLX experiment.
-The default remains MLX W8A16. One fixed-seed full generation has passed local
-numerical and visual A/B checks, but that is not a general perceptual-quality
-baseline.
+Accepted group sizes are 64, 256, 448, and 896. The extension must first be installed
+from the matching local MLX experiment. The default remains MLX W8A16. One fixed-seed
+full generation has passed local numerical and visual A/B checks, but that is not a
+general perceptual-quality baseline.
 
 ## Memory model
 
@@ -220,6 +253,7 @@ Reference notes live in [docs/](docs/): [architecture](docs/architecture.md) (wh
 
 - Distribution and CLI: `mlx-h3`
 - Python import package: `mlx_h3`
+- Published weights: [appautomaton/minimax-h3-base-8bit-mlx](https://huggingface.co/appautomaton/minimax-h3-base-8bit-mlx)
 - Project page: [appautomaton.renocrypt.com/mlx-h3](https://appautomaton.renocrypt.com/mlx-h3/)
 - Repository: [appautomaton/mlx-h3](https://github.com/appautomaton/mlx-h3)
 - Runtime: pure MLX on Apple silicon

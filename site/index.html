@@ -36,7 +36,6 @@
   "url": "https://appautomaton.renocrypt.com/mlx-h3/",
   "codeRepository": "https://github.com/appautomaton/mlx-h3",
   "downloadUrl": "https://pypi.org/project/mlx-h3/",
-  "softwareVersion": "0.0.1a2",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "macOS on Apple silicon",
   "programmingLanguage": "Python",
@@ -82,7 +81,7 @@
       <span class="crumb__sep" aria-hidden="true">/</span>
       <a class="brand__name" href="/mlx-h3/" aria-current="page">mlx-h3</a>
     </nav>
-    <span class="chip chip--pre">v0.0.1a2 · pre-alpha</span>
+    <span class="chip chip--pre">pre-alpha</span>
     <nav class="masthead__nav" aria-label="Primary">
       <a href="#pipeline">Pipeline</a>
       <a href="#scope">Scope</a>
@@ -161,15 +160,15 @@
         40&nbsp;Hz stereo audio latents, and the <span class="ic">simple</span> schedule shifted by
         <span class="ic">12.0</span> for video and <span class="ic">3.0</span> for audio.
         The band is drawn to true proportion, with one first-frame keyframe so the
-        conditioning rows are visible. Video rows dominate every real request —
-        that asymmetry is the reason canvas and frame count are the only levers
-        with real leverage on wall clock.
+        conditioning rows are visible. Video rows dominate every real request,
+        and that asymmetry is the reason canvas and frame count are the only
+        levers with real leverage on wall clock.
       </p>
     </figure>
 
     <div class="cta">
       <div class="cta__cmd">
-        <code id="install-cmd">uv tool install --prerelease allow mlx-h3==0.0.1a2</code>
+        <code id="install-cmd">uv tool install --prerelease allow mlx-h3</code>
         <button class="copy" type="button" data-copy="#install-cmd" aria-label="Copy install command">copy</button>
       </div>
       <a class="btn btn--ghost" href="https://github.com/appautomaton/mlx-h3" rel="noopener">Read the source</a>
@@ -293,9 +292,11 @@
       <li class="scope__i is-on"><span class="scope__s">works</span><span class="scope__k">Ordered references</span><span class="scope__d">Ref2VA, up to 9 images, 3 videos and 3 audio clips. Order is meaningful.</span></li>
       <li class="scope__i is-on"><span class="scope__s">works</span><span class="scope__k">Reference-video soundtrack</span><span class="scope__d">Keep, mute or override a reference video's audio.</span></li>
       <li class="scope__i is-on"><span class="scope__s">works</span><span class="scope__k">Synchronized H.264 / AAC MP4</span><span class="scope__d">Muxed output, 24 fps video and 32 kHz stereo.</span></li>
-      <li class="scope__i is-on"><span class="scope__s">works</span><span class="scope__k">8-bit DiT and text encoder</span><span class="scope__d">MLX affine, group size 32, produced locally.</span></li>
+      <li class="scope__i is-on"><span class="scope__s">works</span><span class="scope__k">8-bit DiT and text encoder</span><span class="scope__d">MLX affine, group size 32. Published as appautomaton/minimax-h3-base-8bit-mlx.</span></li>
+      <li class="scope__i is-on"><span class="scope__s">opt-in</span><span class="scope__k">Community Turbo LoRA</span><span class="scope__d">BF16 adapter, never merged. Paired-schedule Euler at four to eight steps.</span></li>
+      <li class="scope__i is-on"><span class="scope__s">opt-in</span><span class="scope__k">M5 NAX W8A8 trunk</span><span class="scope__d">Experimental. Native integer TensorOps for the DiT trunk linears, on M5 with the local extension.</span></li>
       <li class="scope__i is-off"><span class="scope__s">upstream</span><span class="scope__k">Context-IR</span><span class="scope__d">The prompt-expansion stage is API-only. Plain prompts will underperform the official demos without it.</span></li>
-      <li class="scope__i is-off"><span class="scope__s">upstream</span><span class="scope__k">2K regeneration</span><span class="scope__d">Not super-resolution — H3 regenerating its own 768p result in context. Withheld for now.</span></li>
+      <li class="scope__i is-off"><span class="scope__s">upstream</span><span class="scope__k">2K regeneration</span><span class="scope__d">Not super-resolution. H3 regenerating its own 768p result in context. Withheld for now.</span></li>
     </ul>
   </section>
 
@@ -315,7 +316,7 @@
           <button class="copy" type="button" data-copy="#c-install" aria-label="Copy install commands">copy</button>
         </figcaption>
         <pre class="code__b" id="c-install"><code><span class="c-c"># from PyPI</span>
-uv tool install <span class="c-f">--prerelease</span> allow mlx-h3==0.0.1a2
+uv tool install <span class="c-f">--prerelease</span> allow mlx-h3
 
 <span class="c-c"># or from a checkout</span>
 git clone https://github.com/appautomaton/mlx-h3.git
@@ -339,12 +340,12 @@ git clone https://github.com/appautomaton/mlx-h3.git
       <ul class="reqs__l">
         <li>An Apple silicon Mac with enough unified memory for the canvas and frame count you ask for.</li>
         <li>Python 3.13 or newer, and <span class="ic">ffmpeg</span> on <span class="ic">PATH</span>.</li>
-        <li>A local MiniMax-H3 tokenizer and checkpoints. Nothing is downloaded for you.</li>
+        <li>A local MiniMax-H3 tokenizer and checkpoints. Nothing is downloaded for you, and the README lists every source.</li>
         <li>Room under the memory budget, which defaults to 70&nbsp;GiB. It is a guardrail, not a promise.</li>
       </ul>
       <p class="footnote">
         Keep prompt text in your shell environment or an untracked file. Use
-        <span class="ic">--steps 10</span> for a fast preview;
+        <span class="ic">--steps 10</span> for a fast preview.
         <span class="ic">--steps 20</span> is the quality baseline.
         Run <span class="ic">mlx-h3 --help</span> for every checkpoint path override.
       </p>
@@ -427,6 +428,11 @@ git clone https://github.com/appautomaton/mlx-h3.git
         <span class="eco__n">appautomaton/mlx-h3</span>
         <span class="eco__d">Source, architecture notes, porting notes and weight rules.</span>
       </a>
+      <a class="eco__i" href="https://huggingface.co/appautomaton/minimax-h3-base-8bit-mlx" rel="noopener">
+        <span class="eco__k">Weights</span>
+        <span class="eco__n">minimax-h3-base-8bit-mlx</span>
+        <span class="eco__d">The MLX 8-bit DiTs and text encoder this runtime loads.</span>
+      </a>
       <a class="eco__i" href="https://github.com/appautomaton" rel="noopener">
         <span class="eco__k">GitHub</span>
         <span class="eco__n">appautomaton</span>
@@ -439,7 +445,7 @@ git clone https://github.com/appautomaton/mlx-h3.git
       </a>
       <a class="eco__i" href="https://github.com/appautomaton/mlx-h3/releases" rel="noopener">
         <span class="eco__k">Releases</span>
-        <span class="eco__n">v0.0.1a2</span>
+        <span class="eco__n">Latest pre-release</span>
         <span class="eco__d">Tagged pre-releases and their notes.</span>
       </a>
       <a class="eco__i" href="https://github.com/appautomaton/mlx-h3/issues" rel="noopener">
@@ -466,7 +472,7 @@ git clone https://github.com/appautomaton/mlx-h3.git
     <div class="foot__brand">
       <span class="brand__mark" aria-hidden="true"></span>
       <span class="brand__name">mlx-h3</span>
-      <span class="foot__ver">0.0.1a2</span>
+      <span class="foot__ver">pre-alpha</span>
     </div>
     <p class="foot__note">
       A project of <a class="foot__link" href="https://appautomaton.renocrypt.com/">App Automaton</a>,
