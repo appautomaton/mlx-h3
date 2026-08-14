@@ -58,7 +58,9 @@ def read_tensor(f, base: int, meta: dict) -> mx.array:
     return out.view(mx.bfloat16) if dtype == "BF16" else out
 
 
-def should_quantize(name: str, meta: dict) -> tuple[bool, str]:
+def should_quantize(
+    name: str, meta: dict, *, group_size: int = GROUP_SIZE
+) -> tuple[bool, str]:
     if meta["dtype"] != "BF16":
         return False, f"dtype {meta['dtype']}"
     if not name.endswith(".weight"):
@@ -70,8 +72,8 @@ def should_quantize(name: str, meta: dict) -> tuple[bool, str]:
     shape = meta["shape"]
     if len(shape) != 2:
         return False, f"rank {len(shape)}"
-    if shape[-1] % GROUP_SIZE:
-        return False, f"last dim {shape[-1]} % {GROUP_SIZE}"
+    if shape[-1] % group_size:
+        return False, f"last dim {shape[-1]} % {group_size}"
     return True, ""
 
 
@@ -99,7 +101,7 @@ def main() -> int:
             w = read_tensor(f, base, meta)
             bytes_in += w.nbytes
 
-            ok, why = should_quantize(name, meta)
+            ok, why = should_quantize(name, meta, group_size=args.group_size)
             if ok:
                 q, s, b = mx.quantize(w, group_size=args.group_size, bits=args.bits)
                 mx.eval(q, s, b)

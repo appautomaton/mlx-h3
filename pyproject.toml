@@ -45,6 +45,7 @@ Issues = "https://github.com/appautomaton/mlx-h3/issues"
 [dependency-groups]
 dev = [
     "pytest>=8.3,<9",
+    "pytest-cov>=7.1,<8",
     "ruff>=0.11,<0.12",
     "numpy",              # dev/quantize.py only: raw-byte reads during conversion
 ]
@@ -58,11 +59,23 @@ source-exclude = [".DS_Store"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["--strict-markers"]
+xfail_strict = true
 markers = [
-    "checkpoint: needs local weights under weights/ (skip if absent)",
-    "runtime: needs weights and runs inference (slow)",
-    "fixture: optional parity check against locally supplied test data",
+    "checkpoint: reads local checkpoints under weights/ (optional)",
+    "fixture: compares against independently generated local reference data (optional)",
+    "runtime: exercises external tools, Metal extensions, or real inference (optional/slow)",
 ]
+
+[tool.coverage.run]
+branch = true
+source = ["mlx_h3"]
+
+[tool.coverage.report]
+fail_under = 85.0
+precision = 1
+show_missing = true
+skip_covered = true
 
 [tool.ruff]
 target-version = "py313"

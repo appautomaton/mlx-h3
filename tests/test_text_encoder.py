@@ -97,13 +97,11 @@ def test_ref2va_presentation_preserves_cross_modality_request_order():
 
 
 @pytest.mark.checkpoint
-def test_checkpoint_text_subtree_is_exactly_the_truncated_decoder():
-    path = (
+def test_checkpoint_text_subtree_is_exactly_the_truncated_decoder(local_checkpoint):
+    path = local_checkpoint(
         Path(__file__).resolve().parents[1]
         / "weights/mlx-8bit/te_qwen3vl_a8g32.safetensors"
     )
-    if not path.exists():
-        pytest.skip("quantized text encoder checkpoint absent")
     header, metadata = loading.read_header(path)
     text_keys = {key for key in header if key.startswith("model.")}
     assert len(text_keys) == 1251

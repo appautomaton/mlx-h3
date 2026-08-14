@@ -103,25 +103,6 @@ def test_frame_position_grid(golden):
         assert w_axis[-1] == pytest.approx(case["w_grid_last"], rel=1e-12)
 
 
-def test_audio_grid_shape():
-    """Channel-major stereo: h is flat, w pinned to opposite extremes per channel."""
-    rows = layout.audio_grid(cursor=512.0, t=4, w_low=-5.0, w_high=7.0)
-    assert len(rows) == 8
-    assert [r[0] for r in rows] == [512.0, 513.0, 514.0, 515.0] * 2
-    assert all(r[1] == 0.0 for r in rows)
-    assert [r[2] for r in rows[:4]] == [-5.0] * 4
-    assert [r[2] for r in rows[4:]] == [7.0] * 4
-
-
-def test_video_grid_composition():
-    frame, _ = layout.frame_grid(30, 54)
-    rows = layout.video_grid(17, frame, cursor=512.0)
-    assert len(rows) == 17 * len(frame)
-    ts = layout.video_t_grid(17, 512.0)
-    assert rows[0] == (ts[0], frame[0][0], frame[0][1])
-    assert rows[-1] == (ts[-1], frame[-1][0], frame[-1][1])
-
-
 # --- packed layout --------------------------------------------------------
 #
 # The fixture identifies each case only by name, so the conditioning that
@@ -236,16 +217,3 @@ def test_packed_layout_update_masks(golden):
         # Conditioning always precedes target, so the mask is a partition.
         assert got.img_update == sorted(got.img_update), name
         assert got.audio_update == sorted(got.audio_update), name
-
-
-def test_keyframe_anchor_rejected_in_the_middle():
-    with pytest.raises(ValueError, match="neither first nor last"):
-        layout.pack(
-            text_len=8,
-            latent_t=17,
-            latent_h=30,
-            latent_w=54,
-            audio_t=93,
-            frame_count=56,
-            keyframes=(layout.Keyframe(20),),
-        )

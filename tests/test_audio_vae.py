@@ -84,13 +84,12 @@ def test_tiny_encoder_returns_normalized_stereo_latents():
     assert mx.isfinite(latent).all().item()
 
 
-def test_checkpoint_has_the_released_decoder_geometry():
-    checkpoint = (
+@pytest.mark.checkpoint
+def test_checkpoint_has_the_released_decoder_geometry(local_checkpoint):
+    checkpoint = local_checkpoint(
         Path(__file__).resolve().parents[1]
         / "weights/bf16/vae/minimax_h3_audio_vae_fp32.safetensors"
     )
-    if not checkpoint.exists():
-        pytest.skip("audio VAE checkpoint absent")
     with checkpoint.open("rb") as file:
         header_size = struct.unpack("<Q", file.read(8))[0]
         header = json.loads(file.read(header_size))

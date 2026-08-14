@@ -223,9 +223,29 @@ objects.
 ```sh
 uv run ruff check .
 uv run pytest -q
+uv run pytest -q -m "not checkpoint and not fixture and not runtime"
+uv run pytest -q -m "not checkpoint and not fixture and not runtime" \
+  --cov=mlx_h3 --cov-branch --cov-report=term-missing
 python dev/check_public_tree.py
 uv build --no-sources
 ```
+
+The unmarked suite is deterministic, weightless, and runs on every change. Optional
+validation tiers fail closed when explicitly required:
+
+```sh
+uv run pytest -q -m fixture --require-fixtures
+uv run pytest -q -m checkpoint --require-checkpoints
+uv run pytest -q -m runtime
+```
+
+Reference fixtures are supplied through the local environment variables documented by
+the relevant tests. Checkpoint tests read local safetensors structure without loading
+the full inference payload. Runtime tests may require FFmpeg, Metal extensions, or other
+machine-specific capabilities.
+
+Branch coverage is gated at the measured fast-suite baseline. Raise the floor as
+new tests close identified gaps; do not lower it to accommodate a change.
 
 The public-tree check rejects model files, media, private inputs, generated artifacts,
 large files, hidden local state, symlinks, and structured private prompt payloads. A local

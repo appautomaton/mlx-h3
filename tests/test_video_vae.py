@@ -125,13 +125,12 @@ def test_tiny_encoder_returns_a_normalized_single_frame_mean():
     assert mx.isfinite(latent).all().item()
 
 
-def test_decoder_checkpoint_names_are_fully_accounted_for():
-    checkpoint = (
+@pytest.mark.checkpoint
+def test_decoder_checkpoint_names_are_fully_accounted_for(local_checkpoint):
+    checkpoint = local_checkpoint(
         Path(__file__).resolve().parents[1]
         / "weights/bf16/vae/minimax_h3_video_vae_fp16.safetensors"
     )
-    if not checkpoint.exists():
-        pytest.skip("video VAE checkpoint absent")
     with checkpoint.open("rb") as file:
         header_size = struct.unpack("<Q", file.read(8))[0]
         header = json.loads(file.read(header_size))

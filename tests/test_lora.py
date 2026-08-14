@@ -143,7 +143,9 @@ def test_adaln_lora_is_baked_into_precompute_then_released():
         "minimax_h3_turbo_v4_step600_ema.safetensors",
     ),
 )
-def test_real_adapter_header_matches_both_quantized_dit_trees(adapter_name: str):
+def test_real_adapter_header_matches_both_quantized_dit_trees(
+    adapter_name: str, local_checkpoint
+):
     root = Path(__file__).resolve().parents[1]
     adapter_path = (
         root
@@ -154,8 +156,8 @@ def test_real_adapter_header_matches_both_quantized_dit_trees(adapter_name: str)
         root / "weights/mlx-8bit/dit_fl2va_a8g32.safetensors",
         root / "weights/mlx-8bit/dit_ref2va_a8g32.safetensors",
     )
-    if not adapter_path.exists() or not all(path.exists() for path in base_paths):
-        pytest.skip("Turbo adapter or quantized DiT checkpoint absent")
+    adapter_path = local_checkpoint(adapter_path)
+    base_paths = tuple(local_checkpoint(path) for path in base_paths)
 
     adapter_header, metadata = loading.read_header(adapter_path)
     selected = lora.targets(adapter_header, metadata)

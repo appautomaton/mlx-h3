@@ -28,7 +28,12 @@ def read_header(path: str | Path) -> tuple[dict, dict]:
     with Path(path).open("rb") as f:
         n = struct.unpack("<Q", f.read(8))[0]
         header = json.loads(f.read(n))
-    return header, header.pop("__metadata__", {})
+    metadata = header.pop("__metadata__", None)
+    if metadata is None:
+        metadata = {}
+    elif not isinstance(metadata, dict):
+        raise ValueError("safetensors metadata must be an object")
+    return header, metadata
 
 
 def quantization(metadata: dict) -> dict:

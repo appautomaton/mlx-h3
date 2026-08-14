@@ -193,6 +193,7 @@ def test_final_layer_targets_the_last_two_segments(packed):
     assert step.audio_seg[:2] == (audio.start, audio.stop)
 
 
+@pytest.mark.fixture
 def test_sigma_schedule_agrees_with_the_layout_fixture(local_file):
     """The one part of this file backed by a real reference run."""
     path = local_file("MLX_H3_LAYOUT_FIXTURE")
@@ -338,11 +339,13 @@ def test_precomputed_adaln_matches_weight_path_and_releases_projections(packed):
     assert tiny.final_layer.adaln_proj is None
 
 
-def test_config_matches_the_checkpoint():
+@pytest.mark.checkpoint
+def test_config_matches_the_checkpoint(local_checkpoint):
     """Geometry is read off the checkpoint, not trusted from the dataclass."""
-    ckpt = Path(__file__).resolve().parents[1] / "weights/mlx-8bit/dit_fl2va_a8g32.safetensors"
-    if not ckpt.exists():
-        pytest.skip("checkpoint absent")
+    ckpt = local_checkpoint(
+        Path(__file__).resolve().parents[1]
+        / "weights/mlx-8bit/dit_fl2va_a8g32.safetensors"
+    )
     import struct
 
     with ckpt.open("rb") as f:

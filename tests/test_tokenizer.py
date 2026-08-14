@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from mlx_h3 import tokenizer
 
 
@@ -65,6 +67,7 @@ def test_ranked_bpe_added_tokens_and_utf8_round_trip():
     assert tok.decode(token_ids) == text
 
 
+@pytest.mark.fixture
 def test_released_tokenizer_uses_raw_prompt_without_special_tokens(local_file):
     path = local_file("MLX_H3_TOKENIZER_FILE")
     tok = tokenizer.QwenTokenizer.from_file(path)

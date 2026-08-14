@@ -1,0 +1,40 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Pure MLX quality gate
+    runs-on: macos-15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.32"
+      - name: Install Python
+        run: uv python install 3.13
+      - name: Sync locked development environment
+        run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check .
+      - name: Run fast tests with branch coverage
+        run: >-
+          uv run pytest -q
+          -m "not checkpoint and not fixture and not runtime"
+          --cov=mlx_h3
+          --cov-branch
+          --cov-report=term-missing
+      - name: Check public tree
+        run: python dev/check_public_tree.py
+      - name: Build distributions
+        run: uv build --no-sources
