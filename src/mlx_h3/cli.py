@@ -126,6 +126,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--video-vae", default=pipeline.ModelPaths.video_vae)
     parser.add_argument("--audio-vae", default=pipeline.ModelPaths.audio_vae)
+    parser.add_argument(
+        "--nax-group-size",
+        type=int,
+        choices=(64, 256, 448, 896),
+        help="experimental M5 W8A8 DiT group size; default keeps MLX W8A16",
+    )
     return parser
 
 
@@ -206,7 +212,12 @@ def main() -> int:
         step_started = now
 
     media = pipeline.generate(
-        config, paths, guard, on_step=progress, on_report=report
+        config,
+        paths,
+        guard,
+        nax_group_size=args.nax_group_size,
+        on_step=progress,
+        on_report=report,
     )
     destination = output.mux_mp4(
         args.output,

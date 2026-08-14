@@ -238,6 +238,7 @@ def test_generate_runs_all_models_in_separate_phases(monkeypatch, tmp_path: Path
             if label == "dit":
                 assert len(kwargs["plans"]) == 3
                 assert kwargs["modulation_dtype"] == mx.bfloat16
+                assert kwargs["nax_group_size"] == 896
             loaded.append(label)
             return value()
 
@@ -266,6 +267,7 @@ def test_generate_runs_all_models_in_separate_phases(monkeypatch, tmp_path: Path
         ),
         fake_model_paths(tmp_path),
         FakeGuard(),
+        nax_group_size=896,
     )
     assert loaded == ["text", "dit", "video", "audio"]
     assert result.frames.shape == (1, 3, 5, 32, 32)

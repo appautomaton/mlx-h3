@@ -16,7 +16,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_flatten
 
-from . import lora
+from . import lora, nax
 from .audio_vae import AudioVAE, AudioVAEConfig, AudioVAEEncoder
 from .model import H3Config, MiniMaxH3, Plan
 from .text_encoder import MultimodalTextEncoder, TextEncoder, TextEncoderConfig
@@ -66,6 +66,7 @@ def load_dit(
     modulation_dtype: mx.Dtype | None = None,
     adapter_path: str | Path | None = None,
     adapter_strength: float = 1.0,
+    nax_group_size: int | None = None,
 ) -> MiniMaxH3:
     header, metadata = read_header(path)
     model = prepare(MiniMaxH3(config), header, metadata)
@@ -92,6 +93,8 @@ def load_dit(
         if modulation_dtype is None:
             raise ValueError("modulation_dtype is required with step plans")
         model.precompute_adaln(plans, dtype=modulation_dtype)
+    if nax_group_size is not None:
+        nax.convert_dit(model, group_size=nax_group_size)
     # Materialize now rather than on first use: mx.load is lazy, and letting the
     # weights fault in mid-step is exactly the paging this project must avoid.
     mx.eval(model.parameters())

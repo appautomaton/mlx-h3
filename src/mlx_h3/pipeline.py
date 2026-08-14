@@ -258,6 +258,7 @@ def generate(
     paths: ModelPaths,
     guard: memory.Guard,
     *,
+    nax_group_size: int | None = None,
     on_step: Callable[[int, int, float, float], None] | None = None,
     on_report: Callable[[PhaseReport], None] | None = None,
 ) -> GeneratedMedia:
@@ -558,6 +559,7 @@ def generate(
             plans=step_plans,
             modulation_dtype=text_states.dtype,
             adapter_path=paths.turbo_lora,
+            nax_group_size=nax_group_size,
         ),
         run_dit,
         guard,
