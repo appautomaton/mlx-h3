@@ -23,8 +23,8 @@ tags:
 
 [![PyPI](https://img.shields.io/pypi/v/mlx-h3?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/mlx-h3/)
 [![GitHub](https://img.shields.io/badge/GitHub-mlx--h3-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/appautomaton/mlx-h3)
-[![Project page](https://img.shields.io/badge/project-appautomaton.renocrypt.com-F59E0B?style=flat-square)](https://appautomaton.renocrypt.com/mlx-h3/)
-[![App Automaton](https://img.shields.io/badge/App%20Automaton-project-1f6feb?style=flat-square)](https://appautomaton.renocrypt.com)
+[![Project page](https://img.shields.io/badge/project-appautomaton.com-F59E0B?style=flat-square)](https://appautomaton.com/mlx-h3/)
+[![App Automaton](https://img.shields.io/badge/App%20Automaton-project-1f6feb?style=flat-square)](https://appautomaton.com)
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97-appautomaton-yellow?style=flat-square)](https://huggingface.co/appautomaton)
 
 Complete mixed-precision MLX runtime bundle for **H3-Base**, the open stage of [MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3). The DiTs and text encoder use MLX affine 8-bit serving weights, while the quality-sensitive Video and Audio VAEs remain at their released FP16 and FP32 precision. It turns text into synchronized video and stereo audio, denoised together in one packed sequence, with no PyTorch, CUDA, or cloud API at inference time.
@@ -99,7 +99,7 @@ hf download appautomaton/minimax-h3-base-8bit-mlx --local-dir weights
 ```
 
 Runtime install and usage: [`mlx-h3` on PyPI](https://pypi.org/project/mlx-h3/) ·
-[project page](https://appautomaton.renocrypt.com/mlx-h3/) ·
+[project page](https://appautomaton.com/mlx-h3/) ·
 [GitHub](https://github.com/appautomaton/mlx-h3)
 
 ## Requirements
@@ -110,8 +110,8 @@ Apple silicon with enough unified memory to hold one model at a time. The DiT an
 
 - Source code: [`appautomaton/mlx-h3`](https://github.com/appautomaton/mlx-h3)
 - Package: [`mlx-h3` on PyPI](https://pypi.org/project/mlx-h3/)
-- Project page: [appautomaton.renocrypt.com/mlx-h3](https://appautomaton.renocrypt.com/mlx-h3/)
-- More from App Automaton: [Project](https://appautomaton.renocrypt.com) · [GitHub](https://github.com/appautomaton) · [Hugging Face](https://huggingface.co/appautomaton)
+- Project page: [appautomaton.com/mlx-h3](https://appautomaton.com/mlx-h3/)
+- More from App Automaton: [Project](https://appautomaton.com) · [GitHub](https://github.com/appautomaton) · [Hugging Face](https://huggingface.co/appautomaton)
 
 ## License
 
