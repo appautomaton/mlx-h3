@@ -10,15 +10,22 @@ FL2VA/audio_vae/dac_*.py              -- DAC + BigVGAN lineage
 FL2VA/transformer/                    -- config.json and weights, no code
 ```
 
-Every DiT implementation is therefore an independent rewrite from `config.json`. Three exist:
+Every DiT implementation is therefore an independent rewrite from `config.json`. Six are
+checked out under `.references/`, and since September three of them run natively on Apple
+silicon:
 
 | Implementation | File | Character |
 |---|---|---|
-| ComfyUI | `comfy/ldm/minimax/model.py` (33 KB) | **de-facto spec, most compact and readable** |
+| ComfyUI | `comfy/ldm/minimax/model.py` (40 KB) | **de-facto spec, most compact and readable** |
+| FastVideo | `fastvideo/mlx_runtime/minimax_h3.py` | **MLX — the only same-framework reference** |
+| h3.c | flat C + Metal, ~35 K lines | native Mac, consumes unmodified BF16 |
+| mlx-serve | `src/minimax_h3.zig` | Zig, Apple silicon, ships the fixtures |
 | diffusers | `models/transformers/transformer_minimax_h3.py` | best documented |
-| SGLang | `runtime/models/dits/minimax_h3.py` | production serving, only one with multi-GPU |
+| LightX2V | `models/networks/minimax_h3/model.py` | only readable sparse-attention path |
 
-Use ComfyUI's as the porting baseline.
+Use ComfyUI's as the porting baseline. Use FastVideo's as the tiebreaker: it is the only
+reference written in this runtime's own framework, so it is the only one that can expose an
+MLX-specific slip rather than a transcription slip.
 
 ## Hard constraint: no end-to-end torch reference on a Mac
 
@@ -32,12 +39,19 @@ The upstream fixture generator states the consequence plainly:
 > implementation of the same spec** — it catches the MLX-side slips this port is actually prone
 > to but it **cannot catch a misreading shared by both implementations**.
 
+That last sentence is now less binding than it was. The heading above stays true — there is
+still no *torch* reference that runs here — but since September there are two non-torch
+engines that execute this model end to end on a Mac: FastVideo's MLX runtime and `h3.c`.
+Neither shares ComfyUI's transcription lineage, so a disagreement against either one is
+evidence the transcription itself is wrong, not just the port.
+
 ### Validation tiers, strongest first
 
 | Tier | Method | Strength |
 |---|---|---|
 | layout | `minimax_h3_layout.json` — **actually executes** the ComfyUI reference, weightless | golden |
 | DiT block | `minimax_h3_dit.safetensors` — f32 CPU parity against an independent transcription | catches port slips, not shared misreadings |
+| cross-engine | same prompt and seed against FastVideo MLX or `h3.c` | the only tier that catches a shared misreading |
 | end-to-end | live run, eyeball or compare against a known-good implementation | weakest |
 
 Both fixtures are pre-generated and committed upstream, so **no torch is required** — they are
@@ -49,7 +63,13 @@ single-block trace: `x.h_in` → `x.attn_in` → `x.attn_out` → `x.mlp_out` �
 own weights. Feed `h_in`, assert `h_out`.
 
 `minimax_h3_layout.json` carries `constants`, `frame_grid`, `temporal_shape`, `adapt_canvas`,
-`sigma_schedule`, `frame_position_grid`, `video_t_grid`, `rope_freqs`, `packed_layout`.
+`sigma_schedule`, `frame_position_grid`, `video_t_grid`, `rope_freqs`, `packed_layout`, and —
+new on 2026-09-13 — `ref_layout` and `ref_sizing`, which cover the Ref2VA path that previously
+had no golden values at all.
+
+`minimax_h3_vision.json` is also new and previously had no equivalent. It carries `image_grids`,
+`video_blocks`, `token_tags`, `mrope_position_ids`, `interleaved_rope` and `interleave_map` —
+the Qwen3-VL conditioning layout that `src/mlx_h3/vision.py` builds by hand today.
 
 ## Seven ways to be silently wrong
 
