@@ -136,6 +136,11 @@ dependencies = [
     { name = "mlx" },
 ]
 
+[package.optional-dependencies]
+nax = [
+    { name = "mlx-nax-int" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "numpy" },
@@ -145,7 +150,11 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "mlx", specifier = ">=0.32" }]
+requires-dist = [
+    { name = "mlx", specifier = ">=0.32" },
+    { name = "mlx-nax-int", marker = "extra == 'nax'", editable = "extensions/nax-int" },
+]
+provides-extras = ["nax"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -164,6 +173,17 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/d5/38/b96a3de98cfbb009592b3870af46ff63657b192f8d1e06c6c1faea5fbef3/mlx_metal-0.32.0-py3-none-macosx_15_0_arm64.whl", hash = "sha256:1bd94a1ce5b03a0c898771a3e759f0124300c6ab5155127906a1d50b1f3fcf19", size = 40818869, upload-time = "2026-07-07T17:55:25.059Z" },
     { url = "https://files.pythonhosted.org/packages/dc/59/65d32520175379df33f107749193aa94ea9db069167a36a1a100ff689f62/mlx_metal-0.32.0-py3-none-macosx_26_0_arm64.whl", hash = "sha256:3af76a498d84804f66119800499f9d143d7dffb0878a0dd0d7c2846e58565fd7", size = 56511379, upload-time = "2026-07-07T17:55:36.045Z" },
 ]
+
+[[package]]
+name = "mlx-nax-int"
+version = "0.0.0"
+source = { editable = "extensions/nax-int" }
+dependencies = [
+    { name = "mlx" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "mlx", specifier = "==0.32.0" }]
 
 [[package]]
 name = "numpy"

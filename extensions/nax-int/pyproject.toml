@@ -1,0 +1,21 @@
+# The MLX bound is narrow on purpose. `nanobind_add_module(... NB_DOMAIN mlx)` in
+# CMakeLists.txt makes this extension share MLX's nanobind type registry, which is
+# what lets `mx.array` cross the boundary. That sharing only holds when both sides
+# were built against a compatible nanobind ABI, and the bound must therefore track
+# what has actually been tested rather than a guess at the next minor release.
+#
+#   0.32.0  verified working
+#   0.32.2  verified BROKEN -- grouped_quantize() rejects mlx.core.array because
+#           the two modules register distinct mlx::core::array types
+#   0.32.1  untested
+#
+# Widening this without re-running tests/test_nax.py reintroduces a failure that
+# only appears at denoise time, long after install.
+[build-system]
+requires = [
+  "setuptools>=42",
+  "cmake>=3.27",
+  "mlx==0.32.0",
+  "nanobind==2.13.0",
+]
+build-backend = "setuptools.build_meta"

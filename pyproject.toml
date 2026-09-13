@@ -27,6 +27,16 @@ dependencies = [
     "mlx>=0.32",
 ]
 
+# The NAX extension is opt-in and builds native Metal 4 code, so it stays out of
+# the default install: `uv sync` remains pure MLX with no compiler required.
+# `uv sync --extra nax` builds it against whatever MLX the lockfile pins, which
+# is the point -- the extension shares MLX's nanobind type domain and must be
+# compiled against the same MLX it will be imported alongside.
+[project.optional-dependencies]
+nax = [
+    "mlx-nax-int",
+]
+
 [project.scripts]
 mlx-h3 = "mlx_h3.cli:main"
 
@@ -53,6 +63,9 @@ dev = [
 [build-system]
 requires = ["uv_build>=0.11.2,<0.12"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+mlx-nax-int = { path = "extensions/nax-int", editable = true }
 
 [tool.uv.build-backend]
 source-exclude = [".DS_Store"]

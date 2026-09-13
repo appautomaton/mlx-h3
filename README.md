@@ -72,6 +72,19 @@ cd mlx-h3
 uv sync
 ```
 
+`uv sync` installs a pure-MLX environment and needs no compiler. The
+experimental M5 W8A8 path additionally needs the native NAX extension in
+`extensions/nax-int`, which builds against the MLX version the lockfile pins:
+
+```sh
+uv sync --extra nax
+```
+
+That extra requires an M5-class GPU, macOS 26.4 or newer, Xcode 26 and the Metal
+Toolchain component. Without it, `--nax-group-size` raises at denoise time and
+everything else behaves normally. The extension is not published to PyPI, so the
+option is reachable only from a repository checkout.
+
 From PyPI. The `--prerelease allow` flag selects the current pre-release, so no
 version needs pinning:
 

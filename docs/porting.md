@@ -117,19 +117,30 @@ exact schedule and releases roughly 13 GiB of AdaLN weights before denoising. Se
 8-bit checkpoint is chosen for residency rather than lower-precision matrix throughput.
 
 An explicit M5-only development path in `mlx_h3.nax` instead quantizes activations and dispatches
-native W8A8 TensorOps through a local MLX extension. `dev/one_step.py --nax-group-size ...` is the
-validation entry point. It converts only the 200 attention/MLP trunk linears after AdaLN precompute;
-the default runtime and public CLI remain W8A16. Activation max reduction, BF16 scaling, rounding,
-and int8 casting are fused into one Metal kernel before the group-scaled integer matrix multiply.
+native W8A8 TensorOps through the NAX extension in `extensions/nax-int`, built by `uv sync --extra
+nax`. `dev/one_step.py --nax-group-size ...` is the validation entry point. It converts only the 200
+attention/MLP trunk linears after AdaLN precompute; the default runtime and public CLI remain W8A16.
+Activation max reduction, BF16 scaling, rounding, and int8 casting are fused into one Metal kernel
+before the group-scaled integer matrix multiply.
 
-On an M5 Max at the `dev` shape (56 frames, 864x480, text length 512, sequence length 7,583), three
-fixed-seed one-step runs measured a 23.01 s median for group 896. The corresponding default W8A16
-median was 35.30 s, giving a 1.53x speedup and 34.8% lower step time. Fusing activation
-quantization first improved the earlier W8A8 median from 31.62 s to 25.43 s. Staging each output
-tile's activation and weight scales in threadgroup memory then reduced the median to 23.01 s. Both
-optimizations produce bit-identical one-step W8A8 video and audio tensors. Against W8A16, the
-one-step NRMSE was 1.51% for video and 1.20% for audio. These measurements establish one-step
-numerical parity and performance.
+On an M5 Max at the `dev` shape (56 frames, 864x480, text length 512, sequence length 7,583), the
+default W8A16 median is 35.30 s. Group 896 W8A8 reached that figure in four steps, each measured
+over three fixed-seed runs and each producing bit-identical video and audio tensors:
+
+| Change | Median |
+|---|---|
+| W8A8, unfused | 31.62 s |
+| Fusing activation quantization into one kernel | 25.43 s |
+| Staging per-tile activation and weight scales in threadgroup memory | 23.01 s |
+| Two SIMD groups per 64x64 output tile rather than four | **17.27 s** |
+
+The last step is the current kernel: at H3's shapes the two-group configuration leaves more
+independent threadgroups available to the GPU. Against the 35.30 s W8A16 baseline that is a 2.04x
+speedup and 51.1% lower step time. Against W8A16 the one-step NRMSE was 1.51% for video and 1.20%
+for audio. These measurements establish one-step numerical parity and performance.
+
+Timings for the kernel itself live in `extensions/nax-int/README.md`; that file is the source of
+truth when the two disagree.
 
 A fixed-seed, 20-step T2VA A/B at the same canvas and frame count, with 23 prompt tokens and a
 7,094-token packed sequence, completed end to end in 7.3 minutes for W8A8 versus 9.3 minutes for

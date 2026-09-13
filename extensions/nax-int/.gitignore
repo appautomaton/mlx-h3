@@ -1,0 +1,8 @@
+/build/
+/*.egg-info/
+__pycache__/
+*.py[cod]
+*.so
+*.dylib
+*.metallib
+.DS_Store

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from importlib import import_module
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,11 @@ def pytest_addoption(parser):
         "--require-checkpoints",
         action="store_true",
         help="fail instead of skip when a local model checkpoint is absent",
+    )
+    group.addoption(
+        "--require-nax",
+        action="store_true",
+        help="fail instead of skip when the mlx_nax_int extension is absent",
     )
 
 
@@ -43,6 +49,31 @@ def local_file(request):
         return path
 
     return resolve
+
+
+@pytest.fixture(scope="session")
+def nax_extension(request):
+    """Resolve the optional NAX extension, with a fail-closed validation mode.
+
+    The extension is built by `uv sync --extra nax` and any plain `uv sync`
+    removes it again. Skipping silently in that state would let the M5 W8A8 path
+    stop being exercised while the suite still reported green, so CI and any
+    deliberate M5 run should pass --require-nax.
+    """
+    required = ("grouped_quantize", "grouped_matmul")
+    try:
+        extension = import_module("mlx_nax_int")
+    except ImportError as error:
+        message = f"mlx_nax_int is not installed: {error}"
+    else:
+        missing = [name for name in required if not hasattr(extension, name)]
+        if not missing:
+            return extension
+        message = f"mlx_nax_int lacks fused grouped W8A8 operations: {missing}"
+
+    if request.config.getoption("--require-nax"):
+        pytest.fail(message, pytrace=False)
+    pytest.skip(message)
 
 
 @pytest.fixture(scope="session")
